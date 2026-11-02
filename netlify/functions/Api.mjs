@@ -1,7 +1,7 @@
 /*
  * Elzarandawy Islamic Academy - website server (Netlify Function, stores data in Netlify Blobs).
  * Everything is open for visitors; only the admin signs in.
- * First admin: elzarandawy@gmail.com / Alishehu@723  (set the ADMIN_PASSWORD variable in Netlify to choose your own).
+ * First admin: elzarandawy@gmail.com / Ali9135610001  (set the ADMIN_PASSWORD variable in Netlify to choose your own).
  */
 import crypto from 'node:crypto';
 import { getStore } from '@netlify/blobs';
