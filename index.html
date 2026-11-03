@@ -181,6 +181,8 @@ input:focus,select:focus,textarea:focus{border-color:var(--g600);box-shadow:0 0 
 
 </style>
 <style id="eza-polish">
+.m-item{margin:0 0 26px}.m-title{margin:0 0 12px;padding-bottom:8px;border-bottom:2px solid #2e9e6b;font-family:var(--sans);font-size:1.05rem;color:#fff}.m-item audio.pill{display:block;width:100%;max-width:560px;height:46px;border-radius:999px;background:#f1f3f4}.m-item .m-video{display:block;width:100%;max-width:760px;border-radius:12px;background:#000}.m-item .player.audio{height:84px;max-width:560px;border-radius:999px;background:#f1f3f4}.m-item .player{max-width:760px}.m-note{color:#c3d6cf;margin-top:12px}.m-note p{margin:0 0 8px}.m-docs{margin-top:8px}
+.mi{border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:12px;background:#fafbfa}.rec-box{background:#fff4f4;border:1px solid #f1c0c0;border-radius:10px;padding:10px;margin-bottom:10px}.rec-dot{display:inline-block;width:10px;height:10px;border-radius:50%;background:#d11;animation:eza-blink 1s infinite}@keyframes eza-blink{50%{opacity:.2}}
 @media(max-width:560px){.header-actions>.btn-gold{display:inline-flex}.header-actions{gap:5px}.header-actions .btn-sm{padding:7px 8px;font-size:.78rem}.header-actions .btn-sm svg{display:none}.brand img{width:32px;height:32px}.brand b{font-size:.78rem}.brand small{display:none}.menu-btn{padding:4px}}
 @media (prefers-reduced-motion: no-preference) {
   .card, .btn, .course-card, .step, .stat-card { transition: transform .22s ease, box-shadow .22s ease, opacity .22s ease; }
@@ -429,7 +431,7 @@ module.exports = { toSvg, build };
         var k = pair[0], v = pair[1];
         if (typeof v === 'string') body[k] = v;
         else if (v && v.size) {
-          if (v.size > 1500000) return resp(413, { error: 'File too large (max 1.5MB). Please choose a smaller file.' });
+          if (v.size > 3800000) return resp(413, { error: 'File too large (max 3.8 MB). For long audio or video, paste a YouTube / Google Drive link instead.' });
           files.push({ filename: v.name || 'file', dataUrl: await fileToData(v), size: v.size });
         }
       }
@@ -1062,6 +1064,13 @@ window.ICONS={"house":["0 0 512 512","M277.8 8.6c-12.3-11.4-31.3-11.4-43.5 0l-22
 /* Student pages: dashboard, learning portal, examinations */
 (function () {
   const S = () => App.boot.settings;
+  const mediaItem = (it, n) => {
+    const e = /^\/api\/file\//.test(it.url) ? { kind: it.type === 'video' ? 'video' : 'audio', src: it.url } : Media.embed(it.url, { audio: it.type === 'audio' }); let body = '';
+    if (e && e.kind === 'audio') body = html`<audio class="pill" src="${e.src}" controls preload="none"></audio>`;
+    else if (e && e.kind === 'video') body = html`<video class="m-video" src="${e.src}" controls controlsList="nodownload" preload="metadata" playsinline></video>`;
+    else if (e) body = Media.player(it.url, { audio: it.type === 'audio' });
+    return html`<div class="m-item"><h3 class="m-title">${it.title || (it.type === 'video' ? 'Video ' : 'Audio ') + n}</h3>${body}${it.note ? html`<div class="m-note">${it.note.split(/\n+/).map((p) => html`<p>${p}</p>`)}</div>` : ''}${(it.docs || []).length ? html`<div class="row m-docs">${it.docs.map((d) => html`<a class="btn btn-ghost btn-sm" href="${d.url}" target="_blank" rel="noopener">${icon('paperclip')} ${d.name}</a>`)}</div>` : ''}</div>`;
+  };
   const need = (p) => p.catch((e) => (e.status === 403 || e.status === 401 ? null : Promise.reject(e)));
 
   // ---------- DASHBOARD ----------
@@ -1120,10 +1129,9 @@ window.ICONS={"house":["0 0 512 512","M277.8 8.6c-12.3-11.4-31.3-11.4-43.5 0l-22
     el.innerHTML = toHtml(html`
       <div class="row between" style="padding:6px 0 0"><a class="btn btn-ghost btn-sm" href="${isSt ? '/dashboard' : '/admin'}">${icon('arrow-left', 'flip')} Back</a><b style="color:var(--gold2)">${d.course.title}</b></div>
       <div class="learn-grid"><div class="stack">
-        ${les ? html`${les.videoUrl ? Media.player(les.videoUrl) : ''}${les.audioUrl ? Media.player(les.audioUrl, { audio: true }) : ''}
-        <div class="panel"><div class="row between" style="border-bottom:1px solid #23413a;padding-bottom:12px;margin-bottom:12px"><div><div class="xs" style="color:var(--gold2);letter-spacing:.14em;text-transform:uppercase">Active lesson</div><h2 style="margin:0;font-family:var(--sans);font-size:1.3rem">${les.title}</h2></div>
+        ${les ? html`        <div class="panel"><div class="row between" style="border-bottom:1px solid #23413a;padding-bottom:12px;margin-bottom:12px"><div><div class="xs" style="color:var(--gold2);letter-spacing:.14em;text-transform:uppercase">Active lesson</div><h2 style="margin:0;font-family:var(--sans);font-size:1.3rem">${les.title}</h2></div>
           <div class="row">${isSt ? html`<button class="btn ${les.completed ? 'btn-ghost' : ''}" data-act="toggle-complete">${icon(les.completed ? 'circle-check' : 'check')} ${les.completed ? 'Completed ✓ (undo)' : 'Mark as completed'}</button>` : ''}${next ? html`<button class="btn btn-gold" data-act="next-lesson" data-id="${next.id}">Next ${icon('arrow-right', 'flip')}</button>` : ''}</div></div>
-          <div style="color:#c3d6cf">${(les.description || 'No written notes for this lesson.').split(/\n+/).map((p) => html`<p>${p}</p>`)}</div>
+          ${les.description ? html`<div class="m-note" style="margin-bottom:14px">${les.description.split(/\n+/).map((p) => html`<p>${p}</p>`)}</div>` : ''}${(les.media || []).map((it, k) => mediaItem(it, k + 1))}
           ${les.attachments.length ? html`<div style="border-top:1px solid #23413a;padding-top:12px"><div class="xs muted" style="text-transform:uppercase;margin-bottom:8px">Resources</div><div class="row">${les.attachments.map((a) => html`<a class="btn btn-ghost btn-sm" href="${a.url}" target="_blank" rel="noopener">${icon('paperclip')} ${a.name}</a>`)}</div></div>` : ''}</div>` : html`<div class="panel center">This course has no lessons yet.</div>`}
       </div><div class="stack">
         <div class="panel"><div class="row between"><h3 style="margin:0;font-size:1rem">${icon('list')} Modules &amp; lessons</h3><span class="xs" style="color:#4ade9b;font-weight:700">${d.progress.percent}%</span></div><div class="progress" style="margin:10px 0 14px"><i style="width:${d.progress.percent}%"></i></div>
@@ -1343,7 +1351,7 @@ window.ICONS={"house":["0 0 512 512","M277.8 8.6c-12.3-11.4-31.3-11.4-43.5 0l-22
 
   // =============== COURSE BUILDER ===============
   let B = null;
-  const mediaBadge = (l) => html`${l.video_url ? html`<span class="badge b-blue">${icon('video')} ${Media.embed(l.video_url)?.provider || 'Video'}</span>` : html`<span class="badge b-gray">default video</span>`}${l.audio_url ? html`<span class="badge b-amber">${icon('music')} audio</span>` : ''}${(l.attachments || []).length ? html`<span class="badge b-gray">${icon('paperclip')} ${l.attachments.length}</span>` : ''}`;
+  const mediaBadge = (l) => { const m = (l.media && l.media.length) ? l.media : [...(l.video_url ? [{ type: 'video' }] : []), ...(l.audio_url ? [{ type: 'audio' }] : [])]; const a = m.filter((x) => x.type === 'audio').length, v = m.filter((x) => x.type === 'video').length, dn = m.reduce((n, x) => n + (x.docs ? x.docs.length : 0), 0) + (l.attachments || []).length; return html`${v ? html`<span class="badge b-blue">${icon('video')} ${v}</span>` : ''}${a ? html`<span class="badge b-amber">${icon('music')} ${a}</span>` : ''}${!a && !v ? html`<span class="badge b-gray">default video</span>` : ''}${dn ? html`<span class="badge b-gray">${icon('paperclip')} ${dn}</span>` : ''}`; };
   route('/admin/courses/:id', async ({ id }) => {
     const g = guard(); if (g) return g;
     B = await api.get('/api/admin/courses/' + id);
@@ -1378,24 +1386,106 @@ window.ICONS={"house":["0 0 512 512","M277.8 8.6c-12.3-11.4-31.3-11.4-43.5 0l-22
   App.actions['mod-move'] = async (el) => { const ids = B.modules.map((m) => m.id); const i = ids.indexOf(Number(el.dataset.id)); const j = i + Number(el.dataset.d); [ids[i], ids[j]] = [ids[j], ids[i]]; await api.post('/api/admin/reorder', { type: 'modules', ids }); refreshB(); };
   App.actions['les-move'] = async (el) => { const m = B.modules.find((x) => x.id === Number(el.dataset.mid)); const ids = m.lessons.map((l) => l.id); const i = ids.indexOf(Number(el.dataset.id)); const j = i + Number(el.dataset.d); [ids[i], ids[j]] = [ids[j], ids[i]]; await api.post('/api/admin/reorder', { type: 'lessons', moduleId: m.id, ids }); refreshB(); };
   App.actions['les-del'] = async (el) => { if (await confirmBox('Delete this lesson?', { danger: true, okLabel: 'Delete' })) { await api.del('/api/admin/lessons/' + el.dataset.id); refreshB(); } };
-  const lessonForm = (l, mid) => html`<form data-form="les-save">${l ? html`<input type="hidden" name="id" value="${l.id}">` : html`<input type="hidden" name="mid" value="${mid}">`}
-    ${fld('Lesson title *', 'title', l?.title || '', 'required')}${area('Lesson notes / description', 'description', l?.description || '', 4)}
-    ${fld('Video link', 'videoUrl', l?.video_url || '', 'type=url placeholder="YouTube, Google Drive, Facebook or .mp4 link" data-input="les-preview"', 'Leave empty to use the academy default video (' + S().defaultVideoUrl + ').')}
-    ${fld('Audio link', 'audioUrl', l?.audio_url || '', 'type=url placeholder="Google Drive audio, YouTube or .mp3 link" data-input="les-preview"', 'Optional. Students get an audio player below the video.')}
-    ${area('Downloadable resources (one per line:  Name | https://link)', 'attachments', (l?.attachments || []).map((a) => `${a.name} | ${a.url}`).join('\n'), 3)}
-    <div id="les-preview" class="hidden" style="margin-bottom:14px"></div>
-    <div class="row"><button class="btn" type="submit">${icon('floppy-disk')} Save lesson</button><button class="btn btn-ghost" type="button" data-act="les-prev">${icon('eye')} Preview media</button></div></form>`;
-  App.actions['les-add'] = (el) => openModal('Add lesson', lessonForm(null, el.dataset.mid), { wide: true });
-  App.actions['les-edit'] = (el) => { const l = B.modules.find((m) => m.id === Number(el.dataset.mid)).lessons.find((x) => x.id === Number(el.dataset.id)); openModal('Edit lesson', lessonForm(l), { wide: true }); };
-  App.actions['les-prev'] = () => { const f = document.querySelector('form[data-form="les-save"]'); const box = document.getElementById('les-preview'); const v = f.videoUrl.value || B.defaultVideoUrl, a = f.audioUrl.value; box.classList.remove('hidden'); box.innerHTML = toHtml(html`${Media.player(v)}${a ? Media.player(a, { audio: true }) : ''}`); };
+  // ===== lesson builder: many audio/video items, each with its own note and documents; record audio on the phone =====
+  let LM = [];
+  let REC = null;
+  const MAXREC = 13 * 60;
+  const fmtT = (s) => String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0');
+  const itemsFrom = (l) => {
+    if (!l) return [];
+    if (Array.isArray(l.media) && l.media.length) return l.media.map((x) => ({ type: x.type, title: x.title || '', url: x.url || '', note: x.note || '', docs: (x.docs || []).map((d) => ({ name: d.name, url: d.url })) }));
+    const out = [];
+    if (l.video_url) out.push({ type: 'video', title: '', url: l.video_url, note: '', docs: [] });
+    if (l.audio_url) out.push({ type: 'audio', title: '', url: l.audio_url, note: '', docs: [] });
+    return out;
+  };
+  const stopRec = () => { if (REC) { try { clearInterval(REC.timer); if (REC.mr && REC.mr.state !== 'inactive') { REC.mr.onstop = null; REC.mr.stop(); } if (REC.stream) REC.stream.getTracks().forEach((t) => t.stop()); } catch (e) {} REC = null; } };
+  const recPanel = (i) => {
+    if (!REC || REC.i !== i) return '';
+    if (REC.state === 'recording') return html`<div class="rec-box"><span class="rec-dot"></span> Recording… <b id="rec-time">00:00</b> <span class="xs muted">(max ${MAXREC / 60} min)</span> <button type="button" class="btn btn-sm btn-danger" data-act="mi-rec-stop">${icon('check')} Stop</button></div>`;
+    return html`<div class="rec-box"><div class="xs muted" style="margin-bottom:6px">Listen to your recording first:</div><audio controls src="${REC.url}" style="width:100%"></audio><div class="row" style="margin-top:8px"><button type="button" class="btn btn-sm btn-gold" data-act="mi-rec-use">${icon('floppy-disk')} Use this recording</button><button type="button" class="btn btn-sm btn-ghost" data-act="mi-rec-redo" data-i="${i}">Record again</button><button type="button" class="btn btn-sm btn-ghost" data-act="mi-rec-cancel">Discard</button></div></div>`;
+  };
+  const itemHtml = (it, i) => html`<div class="mi" data-i="${i}">
+    <div class="row between"><b class="sm">${icon(it.type === 'video' ? 'video' : 'music')} Item ${i + 1}</b>
+      <div class="row gap-s"><button type="button" class="btn btn-sm btn-ghost" data-act="mi-move" data-i="${i}" data-d="-1" ${i === 0 ? 'disabled' : ''}>↑</button><button type="button" class="btn btn-sm btn-ghost" data-act="mi-move" data-i="${i}" data-d="1" ${i === LM.length - 1 ? 'disabled' : ''}>↓</button><button type="button" class="btn btn-sm btn-ghost" data-act="mi-del" data-i="${i}">${icon('trash')}</button></div></div>
+    <div class="fgrid"><label class="field"><span>Type</span><select data-mi="type"><option value="audio" ${it.type === 'audio' ? 'selected' : ''}>Audio</option><option value="video" ${it.type === 'video' ? 'selected' : ''}>Video</option></select></label>
+      <label class="field"><span>Title (shown above the player)</span><input data-mi="title" value="${it.title}" maxlength="200" placeholder="e.g. Part 1: Makharij"></label></div>
+    <label class="field"><span>Link (YouTube, Google Drive, Facebook, .mp3 / .mp4) or upload / record below</span><input data-mi="url" value="${it.url}" placeholder="https://… or /api/file/…"></label>
+    ${it.type === 'audio' ? html`<div class="row" style="margin-bottom:8px"><button type="button" class="btn btn-sm" data-act="mi-rec" data-i="${i}">🎙️ Record with my phone</button><label class="btn btn-sm btn-ghost" style="cursor:pointer">${icon('upload')} Upload audio file<input type="file" accept="audio/*" data-on="mi-file" data-i="${i}" hidden></label></div>${recPanel(i)}` : ''}
+    <label class="field"><span>Lesson note for this ${it.type} (optional)</span><textarea data-mi="note" rows="3" maxlength="8000">${it.note}</textarea></label>
+    <div class="xs muted" style="margin-bottom:6px">Documents for this ${it.type}</div>
+    ${it.docs.map((d, j) => html`<div class="row" style="flex-wrap:nowrap;margin-bottom:6px" data-j="${j}"><input data-md="name" value="${d.name}" placeholder="Name" style="max-width:34%"><input data-md="url" value="${d.url}" placeholder="https://… or uploaded"><button type="button" class="btn btn-sm btn-ghost" data-act="md-del" data-i="${i}" data-j="${j}">${icon('trash')}</button></div>`)}
+    <div class="row"><button type="button" class="btn btn-sm btn-ghost" data-act="md-add" data-i="${i}">${icon('plus')} Add document link</button><label class="btn btn-sm btn-ghost" style="cursor:pointer">${icon('upload')} Upload document<input type="file" accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,image/*" data-on="md-file" data-i="${i}" hidden></label></div></div>`;
+  const paintItems = () => {
+    const box = document.getElementById('m-items');
+    if (!box) { stopRec(); return; }
+    box.innerHTML = toHtml(LM.length ? LM.map(itemHtml) : html`<div class="muted sm" style="padding:6px 0 10px">No audio or video yet. If you add nothing, the academy default video plays.</div>`);
+    if (REC && REC.state === 'recording') { const el = document.getElementById('rec-time'); if (el) el.textContent = fmtT(Math.floor((Date.now() - REC.t0) / 1000)); }
+  };
+  const bindItems = () => {
+    const box = document.getElementById('m-items'); if (!box || box.dataset.bound) return; box.dataset.bound = '1';
+    const upd = (e) => {
+      const el = e.target; const card = el.closest('.mi'); if (!card) return; const i = Number(card.dataset.i); const it = LM[i]; if (!it) return;
+      if (el.dataset.mi) { it[el.dataset.mi] = el.value; if (el.dataset.mi === 'type' && e.type === 'change') { if (REC && REC.i === i) stopRec(); paintItems(); } }
+      else if (el.dataset.md) { const row = el.closest('[data-j]'); if (row && it.docs[Number(row.dataset.j)]) it.docs[Number(row.dataset.j)][el.dataset.md] = el.value; }
+    };
+    box.addEventListener('input', upd); box.addEventListener('change', upd);
+  };
+  const openLesson = (title, l, mid) => { stopRec(); openModal(title, lessonForm(l, mid), { wide: true }); setTimeout(() => { paintItems(); bindItems(); }, 30); };
+  const lessonForm = (l, mid) => { LM = itemsFrom(l); return html`<form data-form="les-save">${l ? html`<input type="hidden" name="id" value="${l.id}">` : html`<input type="hidden" name="mid" value="${mid}">`}
+    ${fld('Lesson title *', 'title', l?.title || '', 'required')}${area('General lesson note (optional, shown above the media)', 'description', l?.description || '', 3)}
+    <h3 style="margin:14px 0 6px">${icon('layer-group')} Audio &amp; video items</h3>
+    <p class="help">Add as many audio and video items as you like, in any order. Each one can have its own note and documents.</p>
+    <div id="m-items"></div>
+    <div class="row" style="margin:8px 0 16px"><button type="button" class="btn btn-sm" data-act="mi-add" data-t="audio">${icon('plus')} Add audio</button><button type="button" class="btn btn-sm" data-act="mi-add" data-t="video">${icon('plus')} Add video</button></div>
+    ${area('General downloadable resources for the whole lesson (one per line:  Name | https://link)', 'attachments', (l?.attachments || []).map((a) => `${a.name} | ${a.url}`).join('\n'), 2)}
+    <div class="row"><button class="btn" type="submit">${icon('floppy-disk')} Save lesson</button></div></form>`; };
+  App.actions['les-add'] = (el) => openLesson('Add lesson', null, el.dataset.mid);
+  App.actions['les-edit'] = (el) => { const l = B.modules.find((m) => m.id === Number(el.dataset.mid)).lessons.find((x) => x.id === Number(el.dataset.id)); openLesson('Edit lesson', l); };
+  App.actions['mi-add'] = (el) => { LM.push({ type: el.dataset.t, title: '', url: '', note: '', docs: [] }); paintItems(); };
+  App.actions['mi-del'] = async (el) => { const i = Number(el.dataset.i); if (!(await confirmBox('Remove this item from the lesson?', { danger: true, okLabel: 'Remove' }))) return; if (REC && REC.i === i) stopRec(); LM.splice(i, 1); paintItems(); };
+  App.actions['mi-move'] = (el) => { const i = Number(el.dataset.i), j = i + Number(el.dataset.d); if (j < 0 || j >= LM.length) return; [LM[i], LM[j]] = [LM[j], LM[i]]; stopRec(); paintItems(); };
+  App.actions['md-add'] = (el) => { LM[Number(el.dataset.i)].docs.push({ name: '', url: '' }); paintItems(); };
+  App.actions['md-del'] = (el) => { LM[Number(el.dataset.i)].docs.splice(Number(el.dataset.j), 1); paintItems(); };
+  const uploadMedia = async (file) => {
+    if (file.size > 3800000) throw new Error('This file is ' + (file.size / 1048576).toFixed(1) + ' MB. The limit is 3.8 MB. For long audio or video, upload it to YouTube / Google Drive and paste the link.');
+    const fd = new FormData(); fd.append('file', file); return api.post('/api/admin/upload-media', fd);
+  };
+  App.ons['mi-file'] = async (el) => { const f = el.files && el.files[0]; if (!f) return; const i = Number(el.dataset.i); try { toast('Uploading…'); const r = await uploadMedia(f); LM[i].url = r.url; if (!LM[i].title) LM[i].title = f.name.replace(/\.[^.]+$/, ''); paintItems(); toast('Audio uploaded'); } catch (e) { fail(e); } el.value = ''; };
+  App.ons['md-file'] = async (el) => { const f = el.files && el.files[0]; if (!f) return; const i = Number(el.dataset.i); try { toast('Uploading…'); const r = await uploadMedia(f); LM[i].docs.push({ name: f.name.replace(/\.[^.]+$/, ''), url: r.url }); paintItems(); toast('Document uploaded'); } catch (e) { fail(e); } el.value = ''; };
+  App.actions['mi-rec'] = async (el) => {
+    if (!navigator.mediaDevices || !window.MediaRecorder) { toast('This browser cannot record audio. Please use Chrome.', 'err'); return; }
+    stopRec();
+    let stream; try { stream = await navigator.mediaDevices.getUserMedia({ audio: true }); } catch (e) { toast('Please allow the microphone to record.', 'err'); return; }
+    const types = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus']; const mt = types.find((t) => MediaRecorder.isTypeSupported(t)) || '';
+    const mr = new MediaRecorder(stream, Object.assign({ audioBitsPerSecond: 32000 }, mt ? { mimeType: mt } : {}));
+    const rec = { i: Number(el.dataset.i), mr, stream, chunks: [], t0: Date.now(), state: 'recording', mime: (mt || mr.mimeType || 'audio/webm').split(';')[0] };
+    REC = rec;
+    mr.ondataavailable = (e) => { if (e.data && e.data.size) rec.chunks.push(e.data); };
+    mr.onstop = () => { clearInterval(rec.timer); stream.getTracks().forEach((t) => t.stop()); rec.blob = new Blob(rec.chunks, { type: rec.mime }); rec.url = URL.createObjectURL(rec.blob); rec.state = 'done'; paintItems(); };
+    mr.start(1000);
+    rec.timer = setInterval(() => { const s = Math.floor((Date.now() - rec.t0) / 1000); const t = document.getElementById('rec-time'); if (t) t.textContent = fmtT(s); if (!document.getElementById('m-items')) { stopRec(); return; } if (s >= MAXREC) { toast('Maximum recording length reached'); mr.stop(); } }, 500);
+    paintItems();
+  };
+  App.actions['mi-rec-stop'] = () => { if (REC && REC.mr.state !== 'inactive') REC.mr.stop(); };
+  App.actions['mi-rec-cancel'] = () => { stopRec(); paintItems(); };
+  App.actions['mi-rec-redo'] = (el) => { stopRec(); App.actions['mi-rec'](el); };
+  App.actions['mi-rec-use'] = async () => {
+    if (!REC || !REC.blob) return; const i = REC.i, mime = REC.mime;
+    const ext = mime.includes('mp4') ? 'm4a' : mime.includes('ogg') ? 'ogg' : 'webm';
+    const file = new File([REC.blob], 'recording.' + ext, { type: mime });
+    toast('Saving recording…'); const r = await uploadMedia(file); LM[i].url = r.url; if (!LM[i].title) LM[i].title = 'Recording'; REC = null; paintItems(); toast('Recording saved to this item');
+  };
   App.ons['les-preview'] = () => {};
   App.forms['les-save'] = async (f) => {
     const d = formData(f);
     const attachments = d.attachments.split(/\n+/).map((s) => s.trim()).filter(Boolean).map((s) => { const [n, ...u] = s.split('|'); return u.length ? { name: n.trim(), url: u.join('|').trim() } : { name: 'Download', url: n.trim() }; });
-    const body = { title: d.title, description: d.description, videoUrl: d.videoUrl, audioUrl: d.audioUrl, attachments };
+    const media = LM.filter((x) => x.url && x.url.trim()).map((x) => ({ type: x.type, title: x.title.trim(), url: x.url.trim(), note: x.note, docs: x.docs.filter((y) => y.url && y.url.trim()).map((y) => ({ name: (y.name || '').trim() || 'Download', url: y.url.trim() })) }));
+    const body = { title: d.title, description: d.description, videoUrl: '', audioUrl: '', attachments, media };
     if (d.id) await api.put('/api/admin/lessons/' + d.id, body); else await api.post(`/api/admin/modules/${d.mid}/lessons`, body);
-    closeModal(); toast('Lesson saved'); refreshB();
+    stopRec(); closeModal(); toast('Lesson saved'); refreshB();
   };
+
 
   // =============== EXAMS ===============
   TAB_FN.exams = async () => {
