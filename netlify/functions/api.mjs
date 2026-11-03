@@ -113,6 +113,13 @@ function readToken_(t) {
     var bytes = Buffer.from(m[2], 'base64'); if (bytes.length > 2000000) throw new HttpError(413, 'File too large (max 1.5MB).');
     var id = crypto.randomBytes(12).toString('hex'); pendingFiles.push({ id, bytes, mime, pub }); return id;
   }
+  var MEDIA_MIME = /^(audio\/(webm|ogg|mpeg|mp3|mp4|x-m4a|m4a|aac|wav|x-wav)|image\/(png|jpe?g|webp|gif)|application\/(pdf|msword|vnd\.ms-powerpoint|vnd\.ms-excel|vnd\.openxmlformats-officedocument\.(wordprocessingml\.document|presentationml\.presentation|spreadsheetml\.sheet))|text\/plain)$/;
+  function storeMedia_(file) {
+    var m = /^data:([^;,]+)(?:;[^;,]+)*;base64,(.*)$/.exec(file.dataUrl || ''); if (!m) throw bad('Invalid file');
+    var mime = m[1].toLowerCase(); if (!MEDIA_MIME.test(mime)) throw bad('This file type is not allowed. Use audio (mp3, m4a, ogg, webm, wav), PDF, Word, PowerPoint, Excel, text or an image.');
+    var bytes = Buffer.from(m[2], 'base64'); if (bytes.length > 3800000) throw new HttpError(413, 'File too large (max 3.8 MB). For longer audio or video, upload it to YouTube / Google Drive and paste the link.');
+    var id = crypto.randomBytes(12).toString('hex'); pendingFiles.push({ id, bytes, mime, pub: true }); return { id: id, mime: mime, size: bytes.length };
+  }
   const pubUrl_ = (id) => '/api/file/' + id;
   function readFile_(id) { var f = preloaded[id]; if (!f) throw new HttpError(404, 'File missing'); return 'data:' + f.mime + ';base64,' + f.bytes.toString('base64'); }
 
@@ -357,7 +364,7 @@ function readToken_(t) {
   R('GET', '/api/courses/:id/learn', 'approved', (c) => {
     const id = Number(c.params.id); const co = find('courses', (x) => x.id === id); if (!co) throw new HttpError(404, 'Course not found'); if (!canAccess(c.user, id)) throw new HttpError(403, 'You are not enrolled in this course');
     const s = getSettings(); const done = new Set(filt('progress', (p) => p.user_id === c.user.id).map((p) => p.lesson_id));
-    const modules = filt('modules', (m) => m.course_id === id).sort(byPos).map((m) => ({ id: m.id, title: m.title, description: m.description, lessons: filt('lessons', (l) => l.module_id === m.id).sort(byPos).map((l) => ({ id: l.id, title: l.title, description: l.description, videoUrl: l.video_url || (l.audio_url ? '' : s.defaultVideoUrl), audioUrl: l.audio_url, isDefaultVideo: !l.video_url && !l.audio_url, attachments: l.attachments || [], completed: done.has(l.id) })) }));
+    const modules = filt('modules', (m) => m.course_id === id).sort(byPos).map((m) => ({ id: m.id, title: m.title, description: m.description, lessons: filt('lessons', (l) => l.module_id === m.id).sort(byPos).map((l) => ({ id: l.id, title: l.title, description: l.description, videoUrl: l.video_url || (l.audio_url ? '' : s.defaultVideoUrl), audioUrl: l.audio_url, isDefaultVideo: !l.video_url && !l.audio_url, media: lessonMedia_(l, s), attachments: l.attachments || [], completed: done.has(l.id) })) }));
     expireAttempts(c.user.id); const exams = filt('exams', (e) => e.course_id === id && e.published).map((e) => examStatusForUser(e, c.user.id)); const ce = find('certificates', (x) => x.user_id === c.user.id && x.course_id === id);
     return { course: { id: co.id, title: co.title, instructor: co.instructor, description: co.description, category: co.category }, modules, exams, progress: courseProgress(c.user.id, id), certificate: ce ? { certNo: ce.cert_no, status: ce.status } : null, eligibility: isStaff(c.user) ? null : eligibility(c.user.id, id) };
   });
@@ -428,7 +435,20 @@ function readToken_(t) {
   R('POST', '/api/admin/courses/:id/modules', 'staff', (c) => { const cid = Number(c.params.id); if (!find('courses', (x) => x.id === cid)) throw new HttpError(404, 'Course not found'); const pos = filt('modules', (m) => m.course_id === cid).reduce((m, x) => Math.max(m, x.position), -1) + 1; const m = ins('modules', { course_id: cid, title: U.str(c.body.title, { name: 'Module title', max: 200, required: true }), description: U.str(c.body.description, { max: 1000 }), position: pos }); touch(cid); return { id: m.id }; });
   R('PUT', '/api/admin/modules/:id', 'staff', (c) => { const m = find('modules', (x) => x.id === Number(c.params.id)); if (!m) throw new HttpError(404, 'Module not found'); m.title = U.str(c.body.title, { name: 'Module title', max: 200, required: true }); m.description = U.str(c.body.description, { max: 1000 }); touch(m.course_id); return { ok: true }; });
   R('DELETE', '/api/admin/modules/:id', 'staff', (c) => { const m = find('modules', (x) => x.id === Number(c.params.id)); if (!m) throw new HttpError(404, 'Module not found'); delModule(m.id); touch(m.course_id); return { ok: true }; });
-  const lessonBody = (b) => ({ title: U.str(b.title, { name: 'Lesson title', max: 200, required: true }), description: U.str(b.description, { max: 5000 }), video_url: U.url(b.videoUrl, { name: 'Video link' }), audio_url: U.url(b.audioUrl, { name: 'Audio link' }), attachments: (Array.isArray(b.attachments) ? b.attachments.slice(0, 20) : []).filter((a) => a && a.url).map((a) => ({ name: U.str(a.name, { max: 120 }) || 'Download', url: U.url(a.url, { name: 'Attachment link' }) })) });
+  const lessonBody0 = (b) => ({ title: U.str(b.title, { name: 'Lesson title', max: 200, required: true }), description: U.str(b.description, { max: 5000 }), video_url: U.url(b.videoUrl, { name: 'Video link' }), audio_url: U.url(b.audioUrl, { name: 'Audio link' }), attachments: (Array.isArray(b.attachments) ? b.attachments.slice(0, 20) : []).filter((a) => a && a.url).map((a) => ({ name: U.str(a.name, { max: 120 }) || 'Download', url: U.url(a.url, { name: 'Attachment link' }) })) });
+  const mediaUrl_ = (v, name) => { v = U.str(v, { max: 1000, name, required: false }); if (!v) return ''; if (/^\/api\/file\/[a-f0-9]{24}$/.test(v)) return v; return U.url(v, { name }); };
+  const cleanDocs_ = (a) => (Array.isArray(a) ? a.slice(0, 20) : []).filter((x) => x && x.url).map((x) => ({ name: U.str(x.name, { max: 120 }) || 'Download', url: mediaUrl_(x.url, 'Document link') }));
+  const cleanMedia_ = (a) => (Array.isArray(a) ? a.slice(0, 40) : []).filter((x) => x && x.url).map((x, i) => ({ id: U.str(x.id, { max: 40 }) || ('m' + Date.now().toString(36) + i), type: U.oneOf(x.type === 'video' ? 'video' : 'audio', ['audio', 'video'], 'Media type'), title: U.str(x.title, { max: 200 }), url: mediaUrl_(x.url, 'Media link'), note: U.str(x.note, { max: 8000 }), docs: cleanDocs_(x.docs) }));
+  const lessonMedia_ = (l, s) => {
+    if (Array.isArray(l.media) && l.media.length) return l.media;
+    const out = [];
+    if (l.video_url) out.push({ id: 'legacy-v', type: 'video', title: '', url: l.video_url, note: '', docs: [] });
+    if (l.audio_url) out.push({ id: 'legacy-a', type: 'audio', title: '', url: l.audio_url, note: '', docs: [] });
+    if (!out.length && s && s.defaultVideoUrl) out.push({ id: 'default-v', type: 'video', title: '', url: s.defaultVideoUrl, note: '', docs: [], isDefault: true });
+    return out;
+  };
+  R('POST', '/api/admin/upload-media', 'staff', (c) => { const f = c.files[0]; if (!f) throw bad('No file uploaded'); const r = storeMedia_(f); return { url: pubUrl_(r.id), mime: r.mime, size: r.size }; });
+  const lessonBody = (b) => ({ ...lessonBody0(b), media: b.media === undefined ? undefined : cleanMedia_(b.media) });
   R('POST', '/api/admin/modules/:id/lessons', 'staff', (c) => { const m = find('modules', (x) => x.id === Number(c.params.id)); if (!m) throw new HttpError(404, 'Module not found'); const b = lessonBody(c.body); const pos = filt('lessons', (l) => l.module_id === m.id).reduce((a, x) => Math.max(a, x.position), -1) + 1; const l = ins('lessons', { module_id: m.id, course_id: m.course_id, ...b, position: pos }); touch(m.course_id); return { id: l.id }; });
   R('PUT', '/api/admin/lessons/:id', 'staff', (c) => { const l = find('lessons', (x) => x.id === Number(c.params.id)); if (!l) throw new HttpError(404, 'Lesson not found'); Object.assign(l, lessonBody(c.body)); touch(l.course_id); return { ok: true }; });
   R('DELETE', '/api/admin/lessons/:id', 'staff', (c) => { const l = find('lessons', (x) => x.id === Number(c.params.id)); if (!l) throw new HttpError(404, 'Lesson not found'); delLesson(l.id); touch(l.course_id); return { ok: true }; });
@@ -604,7 +624,15 @@ export default async (req) => {
     if (!/^[a-f0-9]{24}$/.test(fid)) return new Response('Not found', { status: 404 });
     const g = await getStore({ name: 'academy', consistency: 'strong' }).getWithMetadata('pub/' + fid, { type: 'arrayBuffer' });
     if (!g) return new Response('Not found', { status: 404 });
-    return new Response(g.data, { status: 200, headers: { 'Content-Type': (g.metadata && g.metadata.mime) || 'application/octet-stream', 'Cache-Control': 'public, max-age=31536000, immutable' } });
+    const mime = (g.metadata && g.metadata.mime) || 'application/octet-stream';
+    const H = { 'Content-Type': mime, 'Cache-Control': 'public, max-age=31536000, immutable', 'Accept-Ranges': 'bytes', 'X-Content-Type-Options': 'nosniff' };
+    const total = g.data.byteLength, rg = /^bytes=(\d*)-(\d*)$/.exec(req.headers.get('range') || '');
+    if (rg && (rg[1] || rg[2])) {
+      let a = rg[1] === '' ? Math.max(0, total - Number(rg[2])) : Number(rg[1]), b = rg[1] === '' || rg[2] === '' ? total - 1 : Math.min(Number(rg[2]), total - 1);
+      if (a > b || a >= total) return new Response('Range not satisfiable', { status: 416, headers: { 'Content-Range': 'bytes */' + total } });
+      return new Response(g.data.slice(a, b + 1), { status: 206, headers: Object.assign({ 'Content-Range': 'bytes ' + a + '-' + b + '/' + total, 'Content-Length': String(b - a + 1) }, H) });
+    }
+    return new Response(g.data, { status: 200, headers: H });
   }
   if (req.method !== 'POST') return new Response(JSON.stringify({ ok: true, service: 'Elzarandawy Islamic Academy API' }), { status: 200, headers: CORS });
   const psig = req.headers.get('x-paystack-signature');
