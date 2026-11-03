@@ -317,7 +317,39 @@ function readToken_(t) {
     return { ok: true, id: d.id };
   });
   R('POST', '/api/public/donations/paystack', null, () => { throw new HttpError(503, 'Online card payment is not enabled.'); });
-  R('POST', '/api/courses/:id/pay/paystack', 'student', () => { throw new HttpError(503, 'Online card payment is not enabled.'); });
+  async function paystack_(path, opt) {
+    const key = process.env.PAYSTACK_SECRET_KEY; if (!key) throw new HttpError(503, 'Online payment is not set up yet. Please contact the academy.');
+    const r = await fetch('https://api.paystack.co' + path, Object.assign({ headers: { Authorization: 'Bearer ' + key, 'Content-Type': 'application/json' } }, opt || {}));
+    let j = null; try { j = await r.json(); } catch (e) {}
+    if (!j || j.status !== true) throw new HttpError(502, 'Paystack: ' + ((j && j.message) || 'could not complete the request'));
+    return j.data;
+  }
+  async function confirmPaystack_(reference) {
+    const p = find('payments', (x) => x.method === 'PAYSTACK' && x.reference === reference); if (!p) throw new HttpError(404, 'Payment not found');
+    if (p.status === 'APPROVED') { enroll(p.user_id, p.course_id, 'PAID'); return p; }
+    const d = await paystack_('/transaction/verify/' + encodeURIComponent(reference));
+    if (d.status === 'success') {
+      if (Number(d.amount) !== Math.round(p.amount * 100) || String(d.currency || '').toUpperCase() !== p.currency) { p.status = 'REJECTED'; p.admin_notes = 'Amount or currency did not match the course price'; p.reviewed_at = now(); return p; }
+      p.status = 'APPROVED'; p.reviewed_at = now(); p.admin_notes = 'Paid online via Paystack'; enroll(p.user_id, p.course_id, 'PAID');
+    } else if (d.status === 'failed' || d.status === 'reversed') { p.status = 'REJECTED'; p.admin_notes = 'Paystack: ' + d.status; p.reviewed_at = now(); }
+    return p;
+  }
+  R('POST', '/api/courses/:id/pay/paystack', 'student', async (c) => {
+    const co = find('courses', (x) => x.id === Number(c.params.id) && x.published); if (!co) throw new HttpError(404, 'Course not found');
+    if (co.type !== 'PAID') throw bad('This course is free. Press Join this course.');
+    if (isEnrolled(c.user.id, co.id)) return { already: true };
+    const amount = U.finalPrice(co); if (!(amount > 0)) throw bad('This course has no price set.');
+    const reference = 'EIA-' + crypto.randomBytes(8).toString('hex');
+    const base = String(process.env.URL || c.origin || '').replace(/\/+$/, ''); if (!/^https?:\/\//.test(base)) throw new HttpError(500, 'Site address is unknown');
+    const d = await paystack_('/transaction/initialize', { method: 'POST', body: JSON.stringify({ email: c.user.email, amount: Math.round(amount * 100), currency: co.currency, reference, callback_url: base + '/', metadata: { course_id: co.id, user_id: c.user.id, course: co.title } }) });
+    ins('payments', { user_id: c.user.id, course_id: co.id, method: 'PAYSTACK', reference, amount, currency: co.currency, proof_file: '', proof_name: '', status: 'PENDING', admin_notes: '', reviewed_by: null, created_at: now(), reviewed_at: null });
+    return { url: d.authorization_url };
+  });
+  R('GET', '/api/payments/paystack/verify', 'user', async (c) => {
+    const ref = String(c.query.get('reference') || ''); const p = find('payments', (x) => x.method === 'PAYSTACK' && x.reference === ref && x.user_id === c.user.id); if (!p) throw new HttpError(404, 'Payment not found');
+    const r = await confirmPaystack_(ref); return { status: r.status, courseId: r.course_id };
+  });
+  R('POST', '/api/paystack/confirm', null, async (c) => { const ref = String(c.body.reference || ''); if (!/^EIA-[a-f0-9]{16}$/.test(ref)) throw bad('Bad reference'); const r = await confirmPaystack_(ref); return { status: r.status }; });
 
   // ======= student =======
   R('POST', '/api/courses/:id/enroll', 'student', (c) => { const co = find('courses', (x) => x.id === Number(c.params.id) && x.published); if (!co) throw new HttpError(404, 'Course not found'); if (co.type !== 'FREE') throw bad('This is a paid course. Please complete payment to enrol.'); enroll(c.user.id, co.id, 'FREE'); return { ok: true }; });
@@ -378,7 +410,7 @@ function readToken_(t) {
   });
 
   // ======= admin: courses / modules / lessons =======
-  const courseBody = (b, s) => { const type = 'FREE'; return { title: U.str(b.title, { name: 'Course title', max: 200, required: true }), category: U.str(b.category, { name: 'Category', max: 80 }) || 'Islamic Studies', type, price: type === 'PAID' ? U.num(b.price, { name: 'Price', min: 0, max: 1e9 }) : 0, currency: U.oneOf(String(b.currency || s.defaultCurrency || 'NGN').toUpperCase(), CURRENCIES, 'Currency'), discount_pct: type === 'PAID' ? U.num(b.discountPct, { name: 'Discount', min: 0, max: 100, def: 0 }) : 0, instructor: U.str(b.instructor, { name: 'Instructor', max: 120 }) || s.founderName, description: U.str(b.description, { name: 'Description', max: 6000 }), image: U.str(b.image, { max: 2000000, name: 'Cover image' }), published: U.bool(b.published) ? 1 : 0 }; };
+  const courseBody = (b, s) => { const type = U.oneOf(b.type || 'FREE', ['FREE', 'PAID'], 'Course type'); return { title: U.str(b.title, { name: 'Course title', max: 200, required: true }), category: U.str(b.category, { name: 'Category', max: 80 }) || 'Islamic Studies', type, price: type === 'PAID' ? U.num(b.price, { name: 'Price', min: 1, max: 1e9 }) : 0, currency: U.oneOf(String(b.currency || s.defaultCurrency || 'NGN').toUpperCase(), CURRENCIES, 'Currency'), discount_pct: type === 'PAID' ? U.num(b.discountPct, { name: 'Discount', min: 0, max: 100, def: 0 }) : 0, instructor: U.str(b.instructor, { name: 'Instructor', max: 120 }) || s.founderName, description: U.str(b.description, { name: 'Description', max: 6000 }), image: U.str(b.image, { max: 2000000, name: 'Cover image' }), published: U.bool(b.published) ? 1 : 0 }; };
   const touch = (id) => { const c = find('courses', (x) => x.id === id); if (c) c.updated_at = now(); };
   R('GET', '/api/admin/courses', 'staff', () => ({ courses: db.courses.slice().sort((a, b) => b.id - a.id).map((c) => ({ ...c, modules: filt('modules', (m) => m.course_id === c.id).length, lessons: filt('lessons', (l) => l.course_id === c.id).length, exams: filt('exams', (e) => e.course_id === c.id).length, students: filt('enrollments', (e) => e.course_id === c.id).length, finalPrice: U.finalPrice(c) })) }));
   R('GET', '/api/admin/courses/:id', 'staff', (c) => {
@@ -537,13 +569,13 @@ function readToken_(t) {
           const s = readToken_(tk);
           if (s) { const u = find('users', (x) => x.id === s.uid); if (u && u.token_version === s.v && u.status !== 'SUSPENDED' && u.status !== 'REJECTED') user = u; }
         }
-        const ctx = { user, fb, suspended, params, query: q, body, files };
+        const ctx = { user, fb, suspended, params, query: q, body, files, origin: String(req.origin || '') };
         const open = ['/api/public/bootstrap', '/api/auth/login', '/api/auth/logout', '/api/auth/me', '/api/auth/session'];
         if (!isStaff(user) && !open.includes(path)) { const mm = getSettings().maintenance; if (mm && mm.on) throw new HttpError(503, mm.message || 'Maintenance', { maintenance: true }); }
         if (path === '/api/auth/login') { lkey = String(body.email || '').toLowerCase().slice(0, 100); const f = loginFails.get(lkey); if (f && f.n >= 10 && f.t > Date.now()) throw new HttpError(429, 'Too many attempts. Please wait 15 minutes and try again.'); }
         if (r.guard) GUARD[r.guard](ctx);
         let out;
-        try { out = r.fn(ctx); } catch (e) { if (lkey && e instanceof HttpError && e.status === 401) { const f = loginFails.get(lkey); loginFails.set(lkey, { n: (f && f.t > Date.now() ? f.n : 0) + 1, t: Date.now() + 900000 }); } throw e; }
+        try { out = await r.fn(ctx); } catch (e) { if (lkey && e instanceof HttpError && e.status === 401) { const f = loginFails.get(lkey); loginFails.set(lkey, { n: (f && f.t > Date.now() ? f.n : 0) + 1, t: Date.now() + 900000 }); } throw e; }
         if (method !== 'GET') { const b = db.settings._backup; if (BACKUP_NOW || !b || Date.now() - Date.parse(b.at) > 86400000) { try { await makeBackup_(); } catch (e) {} } }
         await saveDb();
         out = out === undefined ? { ok: true } : out;
@@ -575,7 +607,16 @@ export default async (req) => {
     return new Response(g.data, { status: 200, headers: { 'Content-Type': (g.metadata && g.metadata.mime) || 'application/octet-stream', 'Cache-Control': 'public, max-age=31536000, immutable' } });
   }
   if (req.method !== 'POST') return new Response(JSON.stringify({ ok: true, service: 'Elzarandawy Islamic Academy API' }), { status: 200, headers: CORS });
+  const psig = req.headers.get('x-paystack-signature');
+  if (psig) {
+    const raw = await req.text(); const key = process.env.PAYSTACK_SECRET_KEY || '';
+    const good = key && crypto.createHmac('sha512', key).update(raw).digest('hex');
+    if (!good || good.length !== psig.length || !crypto.timingSafeEqual(Buffer.from(good), Buffer.from(psig))) return new Response('Invalid signature', { status: 401 });
+    try { const ev = JSON.parse(raw); if (ev.event === 'charge.success' && ev.data && /^EIA-[a-f0-9]{16}$/.test(String(ev.data.reference || ''))) await handleAsync({ method: 'POST', path: '/api/paystack/confirm', body: { reference: ev.data.reference } }); } catch (e) { console.error('paystack webhook', e && e.message); }
+    return new Response('ok', { status: 200 });
+  }
   let body; try { body = await req.json(); } catch (e) { return new Response(JSON.stringify({ status: 400, data: { error: 'Bad request' } }), { status: 200, headers: CORS }); }
+  body.origin = req.headers.get('origin') || '';
   const out = await handleAsync(body);
   return new Response(JSON.stringify(out), { status: 200, headers: CORS });
 };
