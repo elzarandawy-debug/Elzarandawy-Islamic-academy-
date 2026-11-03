@@ -390,6 +390,23 @@ module.exports = { toSvg, build };
     get: function () { try { return localStorage.getItem(TKEY) || ''; } catch (e) { return mem.token; } },
     set: function (t) { mem.token = t || ''; try { if (t) localStorage.setItem(TKEY, t); else localStorage.removeItem(TKEY); } catch (e) {} },
   };
+  var FBCFG = { apiKey: 'AIzaSyBPOqYzLy-h7rLaIBknw45ywPfY3uLg6fY', authDomain: 'elzarandawy-academy-d02a8.firebaseapp.com', projectId: 'elzarandawy-academy-d02a8', appId: '1:434567184329:web:328fefe9ff72325dbe7218', messagingSenderId: '434567184329' };
+  var FBV = 'https://www.gstatic.com/firebasejs/10.14.1/';
+  var fb = null; // { auth, m }
+  window.EZA_FB_READY = new Promise(function (resolve) {
+    var done = false, fin = function (v) { if (!done) { done = true; resolve(v); } };
+    setTimeout(function () { fin(null); }, 8000);
+    Promise.all([import(FBV + 'firebase-app.js'), import(FBV + 'firebase-auth.js')]).then(function (mods) {
+      var app = mods[0].initializeApp(FBCFG), auth = mods[1].getAuth(app);
+      fb = { auth: auth, m: mods[1] };
+      mods[1].onAuthStateChanged(auth, function () { fin(fb); });
+    }).catch(function (e) { window.__FBERR = e && e.message; fin(null); });
+  });
+  async function idToken() {
+    var a = tok.get(); if (a) return a;
+    var f = await window.EZA_FB_READY; if (!f || !f.auth.currentUser) return '';
+    try { return await f.auth.currentUser.getIdToken(); } catch (e) { return ''; }
+  }
   var MARK = { '/img/logo.png': window.__IMG.logo, '/img/seal.png': window.__IMG.seal, '/img/founder.jpg': window.__IMG.founder };
   function sub(v) {
     if (typeof v === 'string') return MARK[v] || v;
@@ -416,10 +433,11 @@ module.exports = { toSvg, build };
         }
       }
     } else if (typeof opt.body === 'string') { try { body = JSON.parse(opt.body); } catch (e) {} }
-    var ckey = method === 'GET' && /^\/api\/(public\/(bootstrap|courses)|auth\/me)/.test(url.pathname) ? tok.get() + '|' + url.pathname + url.search : null;
+    var TK = await idToken();
+    var ckey = method === 'GET' && /^\/api\/(public\/(bootstrap|courses)|auth\/me)/.test(url.pathname) ? TK.slice(-24) + '|' + url.pathname + url.search : null;
     if (ckey && cache[ckey] && Date.now() - cache[ckey].t < 20000) return resp(cache[ckey].s, cache[ckey].d);
     var r, j, txt;
-    try { r = await realFetch(API, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ method: method, path: url.pathname, query: query, body: body, files: files, token: tok.get() }), redirect: 'follow' }); }
+    try { r = await realFetch(API, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ method: method, path: url.pathname, query: query, body: body, files: files, token: TK }), redirect: 'follow' }); }
     catch (e) { window.__LASTERR = 'Cannot reach Google (' + (e && e.message) + ')'; throw e; }
     txt = await r.text();
     try { j = JSON.parse(txt); } catch (e) { window.__LASTERR = 'Google answered with a page instead of data (HTTP ' + r.status + '): ' + txt.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').slice(0, 160); throw new Error(window.__LASTERR); }
@@ -435,6 +453,33 @@ module.exports = { toSvg, build };
     var u = typeof input === 'string' ? input : (input && input.url) || '';
     if (u.indexOf('/api/') === 0) { if (window.__NOAPI) return Promise.resolve(resp(503, { error: 'The website is not connected to its server yet.' })); return call(input, opt); }
     return realFetch ? realFetch(input, opt) : Promise.reject(new Error('offline'));
+  };
+  var FRIENDLY = { 'auth/email-already-in-use': 'This email is already registered. Please sign in instead.', 'auth/weak-password': 'Password is too weak. Use at least 6 characters.', 'auth/invalid-email': 'Please enter a valid email address.', 'auth/network-request-failed': 'No internet connection. Please check your network and try again.', 'auth/operation-not-allowed': 'Email sign-in is not enabled yet in Firebase (Authentication → Sign-in method → Email/Password).', 'auth/unauthorized-domain': 'This website address is not authorised in Firebase (Authentication → Settings → Authorized domains).', 'auth/too-many-requests': 'Too many attempts. Please wait a few minutes and try again.', 'auth/user-disabled': 'This account has been disabled. Please contact the academy.', 'auth/invalid-credential': 'Wrong email or password.', 'auth/user-not-found': 'Wrong email or password.', 'auth/wrong-password': 'Wrong email or password.' };
+  function ferr(e) { var m = FRIENDLY[e && e.code]; var x = new Error(m || ('Sign-in problem: ' + ((e && e.message) || 'unknown'))); x.code = e && e.code; return x; }
+  async function need() { var f = await window.EZA_FB_READY; if (!f) throw new Error('Could not load the sign-in service. Check your internet connection and reload the page.'); return f; }
+  async function session(fullName, fullNameAr) {
+    var r = await window.fetch('/api/auth/session', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fullName: fullName, fullNameAr: fullNameAr || '' }) });
+    var j = await r.json(); if (!r.ok) { var e = new Error(j.error || 'Could not complete sign-in'); e.status = r.status; throw e; } return j;
+  }
+  window.EZA_AUTH = {
+    signIn: async function (email, pw) {
+      var f = await need(); tok.set('');
+      try { await f.m.signInWithEmailAndPassword(f.auth, email, pw); }
+      catch (e) { if (e && /invalid-credential|user-not-found|wrong-password|invalid-email/.test(e.code || '')) { var x = new Error('Wrong email or password.'); x.code = 'admin-fallback'; throw x; } throw ferr(e); }
+      var u = f.auth.currentUser; cache = {};
+      try { return await session(u.displayName || String(u.email).split('@')[0], ''); } catch (e) { await f.m.signOut(f.auth); throw e; }
+    },
+    register: async function (email, pw, name, nameAr) {
+      var f = await need(); tok.set(''); var cred;
+      try { cred = await f.m.createUserWithEmailAndPassword(f.auth, email, pw); } catch (e) { throw ferr(e); }
+      try { await f.m.updateProfile(cred.user, { displayName: name }); } catch (e) {}
+      try { await f.m.sendEmailVerification(cred.user); } catch (e) {}
+      cache = {};
+      try { await cred.user.getIdToken(true); return await session(name, nameAr); } catch (e) { throw e; }
+    },
+    reset: async function (email) { var f = await need(); try { await f.m.sendPasswordResetEmail(f.auth, email); } catch (e) { if (e && e.code === 'auth/user-not-found') return; throw ferr(e); } },
+    resend: async function () { var f = await need(); if (!f.auth.currentUser) throw new Error('Please sign in first.'); try { await f.m.sendEmailVerification(f.auth.currentUser); } catch (e) { throw ferr(e); } },
+    signOut: async function () { tok.set(''); cache = {}; var f = await window.EZA_FB_READY; if (f && f.auth.currentUser) { try { await f.m.signOut(f.auth); } catch (e) {} } },
   };
   window.EZA_ONLINE = {
     api: function (method, path) { return call(path, { method: method }).then(function (r) { return r.json(); }); },
@@ -456,15 +501,15 @@ window.ICONS={"house":["0 0 512 512","M277.8 8.6c-12.3-11.4-31.3-11.4-43.5 0l-22
       'nav.home': 'Home', 'nav.courses': 'Courses', 'nav.about': 'About', 'nav.donate': 'Donate', 'nav.verify': 'Verify Certificate', 'nav.contact': 'Contact',
       'auth.login': 'Sign in', 'auth.register': 'Register', 'auth.logout': 'Sign out', 'auth.dashboard': 'My Dashboard', 'auth.admin': 'Admin Panel',
       'hero.eyebrow': 'Authentic Islamic & Arabic education', 'hero.title1': 'Seek knowledge,', 'hero.title2': 'illuminate minds',
-      'hero.lead': 'Structured Quranic, Arabic and Islamic studies courses with video and audio lessons, free for everyone, guided by qualified scholars.',
+      'hero.lead': 'Structured Quranic, Arabic and Islamic studies courses with video and audio lessons, free exams and verifiable certificates, guided by qualified scholars.',
       'hero.explore': 'Explore courses', 'hero.register': 'Register as student', 'hero.donate': 'Support us',
       'stats.students': 'Active students', 'stats.courses': 'Courses', 'stats.lessons': 'Lessons', 'stats.certs': 'Certificates issued',
       'home.featured': 'Latest courses', 'home.featuredKicker': 'Start learning', 'home.viewAll': 'View all courses',
       'home.founderKicker': 'Our founder', 'home.how': 'How it works', 'home.howKicker': 'Your journey',
       'step1.t': 'Register', 'step1.d': 'Create your free account and receive your permanent student number.',
-      'step2.t': 'Get approved', 'step2.d': 'The academy reviews and approves your registration.',
-      'step3.t': 'Learn & be examined', 'step3.d': 'Study video and audio lessons, then sit timed examinations.',
-      'step4.t': 'Get certified', 'step4.d': 'Receive a verifiable certificate with QR code and official seal.',
+      'step2.t': 'Join a course', 'step2.d': 'Choose a course and press “Join course”.',
+      'step3.t': 'Learn & take the exam', 'step3.d': 'Study the lessons, then take the exam — as many times as you need.',
+      'step4.t': 'Get certified', 'step4.d': 'Pass with 50% or more and receive your certificate immediately.',
       'cta.donateT': 'Support Islamic education', 'cta.donateD': 'Your sadaqah funds free courses and scholarships for needy students.', 'cta.donateB': 'Donate now',
       'courses.title': 'Course catalog', 'courses.sub': 'Browse our structured Quranic, Arabic and Islamic studies programs.', 'courses.search': 'Search courses…',
       'courses.allCat': 'All categories', 'courses.allType': 'Free & paid', 'courses.free': 'Free', 'courses.paid': 'Paid', 'courses.none': 'No courses match your search yet.',
@@ -484,9 +529,9 @@ window.ICONS={"house":["0 0 512 512","M277.8 8.6c-12.3-11.4-31.3-11.4-43.5 0l-22
       'home.featured': 'Sababbin kwasa-kwasai', 'home.featuredKicker': 'Fara karatu', 'home.viewAll': 'Duba dukkan kwasa-kwasai',
       'home.founderKicker': 'Wanda ya assasa', 'home.how': 'Yadda yake tafiya', 'home.howKicker': 'Tafiyarka',
       'step1.t': 'Yi rajista', 'step1.d': 'Buɗe asusunka kyauta ka sami lambar ɗalibi ta dindindin.',
-      'step2.t': 'A amince da kai', 'step2.d': 'Makarantar za ta duba ta amince da rajistarka.',
-      'step3.t': 'Yi karatu da jarrabawa', 'step3.d': 'Kalli darussan bidiyo da na murya, sannan ka rubuta jarrabawa mai lokaci.',
-      'step4.t': 'Karɓi takardar shaida', 'step4.d': 'Samu takardar shaida mai QR code da hatimin makaranta da za a iya tabbatarwa.',
+      'step2.t': 'Shiga kwas', 'step2.d': 'Zaɓi kwas ka danna “Join course”.',
+      'step3.t': 'Yi karatu da jarrabawa', 'step3.d': 'Yi karatun darussan, sannan ka rubuta jarrabawa — sau nawa kake so.',
+      'step4.t': 'Karɓi takardar shaida', 'step4.d': 'Idan ka samu 50% ko fiye, za ka karɓi takardar shaida nan take.',
       'cta.donateT': 'Tallafa wa karatun Addini', 'cta.donateD': 'Sadakarka tana taimakawa kwasa-kwasai kyauta da tallafin karatu ga ɗalibai marasa ƙarfi.', 'cta.donateB': 'Bada gudummawa yanzu',
       'courses.title': 'Jerin kwasa-kwasai', 'courses.sub': 'Duba tsararrun kwasa-kwasan Alƙur’ani, Larabci da karatun Musulunci.', 'courses.search': 'Nemi kwas…',
       'courses.allCat': 'Dukkan rukunoni', 'courses.allType': 'Kyauta da na kuɗi', 'courses.free': 'Kyauta', 'courses.paid': 'Na kuɗi', 'courses.none': 'Babu kwas da ya dace da bincikenka.',
@@ -506,9 +551,9 @@ window.ICONS={"house":["0 0 512 512","M277.8 8.6c-12.3-11.4-31.3-11.4-43.5 0l-22
       'home.featured': 'أحدث الدورات', 'home.featuredKicker': 'ابدأ التعلّم', 'home.viewAll': 'عرض كل الدورات',
       'home.founderKicker': 'مؤسس الأكاديمية', 'home.how': 'كيف تعمل الأكاديمية', 'home.howKicker': 'رحلتك',
       'step1.t': 'سجّل', 'step1.d': 'أنشئ حسابك المجاني واحصل على رقم الطالب الدائم.',
-      'step2.t': 'تتم الموافقة', 'step2.d': 'تراجع الأكاديمية تسجيلك وتوافق عليه.',
+      'step2.t': 'انضم إلى دورة', 'step2.d': 'اختر دورة واضغط «انضمام».',
       'step3.t': 'تعلّم وامتحن', 'step3.d': 'ادرس الدروس المرئية والمسموعة ثم اجتز اختبارات محددة الوقت.',
-      'step4.t': 'احصل على شهادتك', 'step4.d': 'استلم شهادة موثّقة برمز QR وختم رسمي يمكن التحقق منها.',
+      'step4.t': 'احصل على شهادتك', 'step4.d': 'عند تحقيق 50٪ فأكثر تحصل على شهادتك فورًا.',
       'cta.donateT': 'ادعم التعليم الإسلامي', 'cta.donateD': 'صدقتك تموّل الدورات المجانية والمنح للطلاب المحتاجين.', 'cta.donateB': 'تبرّع الآن',
       'courses.title': 'دليل الدورات', 'courses.sub': 'تصفّح برامجنا المنظّمة في القرآن واللغة العربية والعلوم الإسلامية.', 'courses.search': 'ابحث عن دورة…',
       'courses.allCat': 'كل التصنيفات', 'courses.allType': 'مجانية ومدفوعة', 'courses.free': 'مجانية', 'courses.paid': 'مدفوعة', 'courses.none': 'لا توجد دورات مطابقة.',
@@ -765,7 +810,7 @@ window.ICONS={"house":["0 0 512 512","M277.8 8.6c-12.3-11.4-31.3-11.4-43.5 0l-22
         <div class="foot">
           <div class="sig"><div class="img">${sig}</div><div class="line"></div><b>${brand.cert.signatoryName}</b><small>${brand.cert.signatoryTitle}</small></div>
           <div class="seal">${brand.seal ? html`<img src="${brand.seal}" alt="">` : ''}<div class="date">${L.awarded} ${date(c.issuedAt)}</div></div>
-          <div class="qr"><img src="/api/qr?text=${encodeURIComponent(verifyUrl)}" alt="QR"><div>${L.certNo}<br><b>${c.certNo}</b></div></div>
+          <div class="qr"><img src="/api/qr?text=${encodeURIComponent(verifyUrl)}" alt="QR"><div>${c.regNumber ? html`${L.studentNo}<br><b>${c.regNumber}</b><br>` : ''}${L.certNo}<br><b>${c.certNo}</b></div></div>
         </div>
       </div>
     </div>`;
@@ -814,24 +859,26 @@ window.ICONS={"house":["0 0 512 512","M277.8 8.6c-12.3-11.4-31.3-11.4-43.5 0l-22
 
   // ---------- HOME ----------
   route('/', async () => {
-    const { courses } = await api.get('/api/public/courses');
+    const courses = App.user ? (await api.get('/api/public/courses')).courses : [];
     const st = App.boot.stats, s = S();
     return { title: 'Home', html: html`
       <section class="hero"><div class="container">
         <div><span class="eyebrow">${icon('star')} ${t('hero.eyebrow')}</span>
           <h1>${t('hero.title1')} <em>${t('hero.title2')}</em></h1>
           <p class="lead">${t('hero.lead')}</p>
-          <div class="row"><a class="btn btn-gold btn-lg" href="/courses">${icon('graduation-cap')} ${t('hero.explore')}</a><a class="btn btn-ghost on-dark btn-lg" href="/donate">${icon('hand-holding-heart')} ${t('hero.donate')}</a></div>
-          <div class="stats"><div><b>${st.courses}</b><span>${t('stats.courses')}</span></div><div><b>${st.lessons}</b><span>${t('stats.lessons')}</span></div><div><b>${st.certificates}</b><span>${t('stats.certs')}</span></div></div>
+          <div class="row"><a class="btn btn-gold btn-lg" href="/courses">${icon('graduation-cap')} ${t('hero.explore')}</a>${App.user ? '' : html`<a class="btn btn-ghost on-dark btn-lg" href="/register">${icon('user-plus')} ${t('hero.register')}</a>`}<a class="btn btn-ghost on-dark btn-lg" href="/donate">${icon('hand-holding-heart')} ${t('hero.donate')}</a></div>
+          <div class="stats"><div><b>${st.courses}</b><span>${t('stats.courses')}</span></div><div><b>${st.lessons}</b><span>${t('stats.lessons')}</span></div>${st.certificates >= 1 ? html`<div><b>${st.certificates}</b><span>${t('stats.certs')}</span></div>` : ''}</div>
         </div>
         <div class="hero-art"><img class="crest" src="${s.logo}" alt="${s.siteName}"></div>
       </div></section>
       <section class="section"><div class="container">
         <div class="sec-head"><div><span class="kicker">${t('home.featuredKicker')}</span><h2 style="margin:0">${t('home.featured')}</h2></div><a class="btn btn-ghost" href="/courses">${t('home.viewAll')} ${icon('arrow-right', 'flip')}</a></div>
-        ${courses.length ? html`<div class="grid g3">${courses.slice(0, 6).map(courseCard)}</div>` : html`<div class="card card-body center muted">New courses are being prepared — please check back soon.</div>`}
+        ${!App.user ? html`<div class="card card-body center"><p class="muted" style="margin-top:0">Register free (or sign in) to see our courses and start learning.</p><div class="row" style="justify-content:center"><a class="btn btn-gold" href="/register">${icon('user-plus')} ${t('auth.register')}</a><a class="btn btn-ghost" href="/login">${icon('right-to-bracket')} ${t('auth.login')}</a></div></div>` : courses.length ? html`<div class="grid g3">${courses.slice(0, 6).map(courseCard)}</div>` : html`<div class="card card-body center muted">New courses are being prepared — please check back soon.</div>`}
       </div></section>
       <section class="section" style="background:#fff;border-block:1px solid var(--line)"><div class="container">${founderBlock(false)}</div></section>
-            <section class="container" style="padding-bottom:50px"><div class="cta-band"><div><h2>${t('cta.donateT')}</h2><p style="margin:0;color:#cfe7dc">${t('cta.donateD')}</p></div><a class="btn btn-gold btn-lg" href="/donate">${icon('hand-holding-heart')} ${t('cta.donateB')}</a></div></section>` };
+      <section class="section"><div class="container"><div class="center" style="margin-bottom:24px"><span class="kicker">${t('home.howKicker')}</span><h2>${t('home.how')}</h2></div>
+        <div class="grid g4 steps">${[1, 2, 3, 4].map((n) => html`<div class="card step"><h3>${t('step' + n + '.t')}</h3><p class="sm muted" style="margin:0">${t('step' + n + '.d')}</p></div>`)}</div></div></section>
+      <section class="container" style="padding-bottom:50px"><div class="cta-band"><div><h2>${t('cta.donateT')}</h2><p style="margin:0;color:#cfe7dc">${t('cta.donateD')}</p></div><a class="btn btn-gold btn-lg" href="/donate">${icon('hand-holding-heart')} ${t('cta.donateB')}</a></div></section>` };
   });
 
   // ---------- COURSES ----------
@@ -848,9 +895,9 @@ window.ICONS={"house":["0 0 512 512","M277.8 8.6c-12.3-11.4-31.3-11.4-43.5 0l-22
     return { title: t('courses.title'), html: html`
       <div class="page-head"><div class="container"><h1>${t('courses.title')}</h1><p>${t('courses.sub')}</p></div></div>
       <div class="container section" style="padding-top:28px">
-        <div class="card card-body" style="margin-bottom:24px"><div class="fgrid" style="grid-template-columns:2fr 1fr 1fr;margin:0">
+        <div class="card card-body" style="margin-bottom:24px"><div class="fgrid" style="grid-template-columns:2fr 1fr;margin:0">
           <input id="c-q" data-input="filter-courses" placeholder="${t('courses.search')}"><select id="c-cat" data-on="filter-courses"><option value="">${t('courses.allCat')}</option>${cats.map((c) => html`<option>${c}</option>`)}</select>
-          <select id="c-type" data-on="filter-courses"><option value="">${t('courses.allType')}</option><option value="FREE">${t('courses.free')}</option><option value="PAID">${t('courses.paid')}</option></select></div></div>
+          </div></div>
         <div class="grid g3" id="c-grid"></div></div>`, mount: catalogGrid };
   });
 
@@ -865,27 +912,25 @@ window.ICONS={"house":["0 0 512 512","M277.8 8.6c-12.3-11.4-31.3-11.4-43.5 0l-22
     const d = await api.get('/api/public/courses/' + id);
     const c = d.course;
     const u = App.user; let panel;
-    if (!App.isStaff()) panel = html`<a class="btn btn-gold btn-block btn-lg" href="/learn/${c.id}">${icon('play')} Start learning (free)</a>`;
+    if (!u) panel = html`<a class="btn btn-block" href="/login?next=/courses/${c.id}">${icon('right-to-bracket')} Sign in to join</a>`;
     else if (App.isStaff()) panel = html`<a class="btn btn-block" href="/learn/${c.id}">${icon('eye')} Preview course content</a><a class="btn btn-ghost btn-block" style="margin-top:8px" href="/admin/courses/${c.id}">${icon('pen')} Edit course</a>`;
-    else if (u.status !== 'APPROVED') panel = html`<div class="alert warn">${icon('hourglass-half')} <div>Your account is waiting for approval. You can enrol once it is approved.</div></div>`;
+    else if (u.status !== 'APPROVED') panel = html`<div class="alert err">Your account is not active. Please contact the academy.</div>`;
     else if (d.access?.enrolled) panel = html`<a class="btn btn-gold btn-block btn-lg" href="/learn/${c.id}">${icon('play')} Continue learning</a>`;
-    else if (c.type === 'FREE') panel = html`<button class="btn btn-gold btn-block btn-lg" data-act="enroll-free" data-id="${c.id}">${icon('book-open')} Enrol for free</button>`;
-    else if (d.access?.lastPayment === 'PENDING') panel = html`<div class="alert warn">${icon('hourglass-half')} <div>Your payment receipt is being reviewed. The course unlocks as soon as it is approved.</div></div>`;
-    else panel = html`${d.access?.lastPayment === 'REJECTED' ? html`<div class="alert err">${icon('circle-xmark')} <div>Your last payment was not approved. Please check the notes under Dashboard → Payments and submit again.</div></div>` : ''}${App.boot.paystack ? html`<button class="btn btn-gold btn-block btn-lg" data-act="pay-online" data-id="${c.id}">${icon('wallet')} Pay online (card / transfer)</button>` : ''}<button class="btn ${App.boot.paystack ? 'btn-ghost' : 'btn-gold btn-lg'} btn-block" style="margin-top:8px" data-act="checkout" data-id="${c.id}">${icon('receipt')} Pay by bank transfer &amp; upload receipt</button>`;
+    else panel = html`<button class="btn btn-gold btn-block btn-lg" data-act="enroll-free" data-id="${c.id}">${icon('book-open')} Join this course</button>`;
     return { title: c.title, html: html`
       <div class="page-head"><div class="container"><span class="badge b-gold">${c.category}</span><h1 style="margin-top:10px">${c.title}</h1><p>${c.instructor} · ${c.modules} ${t('course.modules')} · ${c.lessons} ${t('course.lessons')} · ${c.students} ${t('course.students')}</p></div></div>
       <div class="container section" style="padding-top:30px"><div class="grid" style="grid-template-columns:1fr 360px;align-items:start">
         <div>${c.image ? html`<img src="${c.image}" alt="" style="border-radius:16px;margin-bottom:20px;width:100%;max-height:380px;object-fit:cover">` : ''}
           <h2>About this course</h2><div class="prose">${(c.description || '').split(/\n+/).map((p) => html`<p>${p}</p>`)}</div>
           <h2 style="margin-top:28px">Curriculum</h2>
-          ${d.modules.map((m, i) => html`<details class="acc" ${i === 0 ? 'open' : ''}><summary><span>${m.title}</span><span class="xs muted">${m.lessons.length} ${t('course.lessons')}</span></summary>${m.lessons.map((l) => html`<div class="li">${icon('play', 'muted')} ${l.title}</div>`)}${m.lessons.length ? '' : html`<div class="li muted">Lessons coming soon</div>`}</details>`)}
+          ${d.modules.map((m, i) => html`<details class="acc" ${i === 0 ? 'open' : ''}><summary><span>${m.title}</span><span class="xs muted">${m.lessons.length} ${t('course.lessons')}</span></summary>${m.lessons.map((l) => html`<div class="li">${icon('lock', 'muted')} ${l.title}</div>`)}${m.lessons.length ? '' : html`<div class="li muted">Lessons coming soon</div>`}</details>`)}
           ${d.exams.length ? html`<h2 style="margin-top:28px">Examinations</h2>${d.exams.map((e) => html`<div class="card card-body flat" style="margin-bottom:10px"><b>${e.title}</b><div class="xs muted">${e.duration_minutes} minutes · pass mark ${e.pass_mark}%${e.start_at ? ' · opens ' + dateTime(e.start_at) : ''}${e.end_at ? ' · closes ' + dateTime(e.end_at) : ''}</div></div>`)}` : ''}
         </div>
         <aside class="card card-body" style="position:sticky;top:90px"><div style="font-size:1.8rem;margin-bottom:12px">${priceHtml(c)}</div>${panel}
-          <ul class="sm muted" style="padding-inline-start:18px;margin-bottom:0"><li>Video &amp; audio lessons</li><li>Free for everyone</li><li>No registration needed</li><li>Final exam with instant result</li><li>Certificate you can download</li></ul></aside></div></div>` };
+          <ul class="sm muted" style="padding-inline-start:18px;margin-bottom:0"><li>Free course</li><li>Video &amp; audio lessons</li><li>Final exam — retake as often as you need</li><li>Certificate issued instantly when you pass</li></ul></aside></div></div>` };
   }
   route('/courses/:id', coursePage);
-  App.actions['enroll-free'] = async (el) => { await api.post(`/api/courses/${el.dataset.id}/enroll`); toast('You are enrolled!'); go('/learn/' + el.dataset.id); };
+  App.actions['enroll-free'] = async (el) => { await api.post(`/api/courses/${el.dataset.id}/enroll`); toast('You have joined this course'); go('/learn/' + el.dataset.id); };
   App.actions['pay-online'] = async (el) => { const r = await api.post(`/api/courses/${el.dataset.id}/pay/paystack`); VLOC.href = r.url; };
   App.actions.checkout = async (el) => {
     const { course: c } = await api.get('/api/public/courses/' + el.dataset.id);
@@ -920,23 +965,7 @@ window.ICONS={"house":["0 0 512 512","M277.8 8.6c-12.3-11.4-31.3-11.4-43.5 0l-22
     const s = S(), d = s.donation;
     return { title: t('nav.donate'), html: html`
       <div class="page-head"><div class="container"><h1>${d.title}</h1><p>${icon('hand-holding-heart')} ${t('cta.donateD')}</p></div></div>
-      <div class="container section" style="padding-top:30px"><div class="grid" style="grid-template-columns:1fr 1fr;align-items:start">
-        <div class="stack">${q.thanks ? html`<div class="alert ok">${icon('circle-check')} <div><b>JazakAllahu khayran!</b> ${q.thanks === 'ok' ? 'Your donation was received.' : 'We are confirming your payment.'}</div></div>` : ''}
-          <div class="prose"><p style="font-size:1.05rem">${d.message}</p></div>
-          <h3>Bank transfer details</h3>${bankBox()}
-          ${App.boot.paystack ? html`<div class="card card-body"><h3>Donate online (Naira)</h3><form data-form="don-online"><div class="fgrid"><label class="field"><span>Name</span><input name="name"></label><label class="field"><span>Email *</span><input name="email" type="email" required></label></div><label class="field"><span>Amount (₦) *</span><input name="amount" type="number" min="100" required value="5000"></label><button class="btn btn-gold btn-block" type="submit">${icon('wallet')} Pay with card / bank (Paystack)</button></form></div>` : ''}
-        </div>
-        <div class="card card-body"><h3>I have made a transfer — record my donation</h3>
-          <div class="row" style="margin-bottom:12px">${d.presets.map((a) => html`<button type="button" class="btn btn-sm btn-ghost" data-act="don-amount" data-amount="${a}">₦${a.toLocaleString()}</button>`)}</div>
-          <form data-form="donate" enctype="multipart/form-data">
-            <div class="fgrid"><label class="field"><span>Amount *</span><input id="don-amount" name="amount" type="number" min="1" step="0.01" required placeholder="5000"></label>
-            <label class="field"><span>Currency</span><select name="currency">${['NGN', 'USD', 'GHS', 'GBP', 'EUR', 'SAR', 'AED'].map((x) => html`<option ${x === s.defaultCurrency ? 'selected' : ''}>${x}</option>`)}</select></label></div>
-            <div class="fgrid"><label class="field"><span>Your name *</span><input name="name" required></label><label class="field"><span>Email</span><input name="email" type="email"></label></div>
-            <div class="fgrid"><label class="field"><span>Phone / WhatsApp</span><input name="phone"></label><label class="field"><span>Transaction reference *</span><input name="reference" required minlength="3"></label></div>
-            <label class="field"><span>Receipt (optional but helps us confirm faster)</span><input name="proof" type="file" accept="image/*,application/pdf"></label>
-            <label class="field"><span>Message / intention (optional)</span><textarea name="note" rows="2"></textarea></label>
-            <button class="btn btn-gold btn-block btn-lg" type="submit">${icon('heart')} Submit donation</button></form></div>
-      </div></div>` };
+      <div class="container section narrow" style="padding-top:30px"><div class="card card-body center"><div class="prose"><p style="font-size:1.05rem">${d.message}</p></div><a class="btn btn-gold btn-lg" href="https://paystack.shop/pay/8otv1edqu3" target="_blank" rel="noopener" style="margin-top:10px">${icon('wallet')} Donate with Paystack</a><p class="xs muted" style="margin-bottom:0">You will be taken to Paystack’s secure page. JazakAllahu khayran.</p></div></div>` };
   });
   App.forms.donate = async (f) => { await api.post('/api/public/donations', new FormData(f)); f.reset(); toast('JazakAllahu khayran! Your donation was recorded and will be confirmed shortly.'); go('/donate?thanks=pending'); };
   App.forms['don-online'] = async (f) => { const r = await api.post('/api/public/donations/paystack', formData(f)); VLOC.href = r.url; };
@@ -961,7 +990,7 @@ window.ICONS={"house":["0 0 512 512","M277.8 8.6c-12.3-11.4-31.3-11.4-43.5 0l-22
     certCache = { ...d, lang: d.brand.cert.language };
     const c = d.certificate;
     return { title: 'Certificate ' + c.certNo, html: html`
-      <div class="container section" style="max-width:1160px"><div class="alert ok">${icon('circle-check')} <div><b>Verified — this certificate is genuine.</b> Issued by ${d.brand.siteName} to <b>${c.studentName}</b> on ${date(c.issuedAt)}.</div></div>
+      <div class="container section" style="max-width:1160px"><div class="alert ok">${icon('circle-check')} <div><b>Verified — this certificate is genuine.</b> Issued by ${d.brand.siteName} to <b>${c.studentName}</b>${c.regNumber ? html` (${c.regNumber})` : ''} on ${date(c.issuedAt)}.</div></div>
       <div class="cert-tools"><button class="btn" data-act="cert-print">${icon('print')} Print / Save as PDF</button>${Object.keys(Cert.PACK).map((l) => html`<button class="btn btn-ghost" data-act="cert-lang" data-lang="${l}">${l}</button>`)}</div>
       <div id="cert-holder" class="card" style="padding:0;overflow:hidden">${Cert.stage(certHtml(certCache.lang))}</div>
       <p class="xs muted center" style="margin-top:12px">Tip: in the print window choose “Save as PDF”, paper size A4, landscape, and enable “Background graphics”.</p></div>`, mount: (v) => Cert.fit(v) };
@@ -1012,17 +1041,17 @@ window.ICONS={"house":["0 0 512 512","M277.8 8.6c-12.3-11.4-31.3-11.4-43.5 0l-22
       <label class="field"><span>Email</span><input name="email" type="email" required autocomplete="username"></label>
       <label class="field"><span>Password</span><input name="password" type="password" required autocomplete="current-password"></label>
       <button class="btn btn-block btn-lg" type="submit">${icon('right-to-bracket')} ${t('auth.login')}</button>
-      <p class="sm center muted" style="margin:14px 0 0">New student? <a href="/register">${t('auth.register')}</a> · Forgot your password? <a href="/contact">Contact the academy</a></p></form></div></div>` };
+      <p class="sm center muted" style="margin:14px 0 0">New student? <a href="/register">${t('auth.register')}</a> · <a href="#" data-act="forgot-pw">Forgot your password?</a></p></form></div></div>` };
   });
   route('/register', async () => {
     if (App.user) return { redirect: '/dashboard' };
     return { title: t('auth.register'), html: html`<div class="container"><div class="card form-card" style="max-width:600px">${authHead('New student registration', 'Free account · permanent student number')}<form data-form="register" class="card-body">
-      <label class="field"><span>Full name *</span><input name="fullName" required minlength="3" autocomplete="name" placeholder="As it should appear on your certificate"></label>
-      <div class="fgrid"><label class="field"><span>Email *</span><input name="email" type="email" required autocomplete="email"></label><label class="field"><span>WhatsApp / phone *</span><input name="phone" required minlength="6" placeholder="+234…" autocomplete="tel"></label></div>
-      <div class="fgrid"><label class="field"><span>Country *</span><input name="country" required placeholder="Nigeria"></label><label class="field"><span>Preferred language</span><select name="language"><option>English</option><option>Hausa</option><option>Arabic</option></select></label></div>
-      <div class="fgrid"><label class="field"><span>Password * (min. 8 characters)</span><input name="password" type="password" required minlength="8" autocomplete="new-password"></label><label class="field"><span>Repeat password *</span><input name="password2" type="password" required minlength="8" autocomplete="new-password"></label></div>
-      <div class="alert warn">${icon('circle-info')} <div>You will receive a permanent student number (e.g. <b>EZA-${new Date().getFullYear()}-000001</b>). Your account is activated after the academy approves it.</div></div>
-      <button class="btn btn-gold btn-block btn-lg" type="submit">${icon('user-plus')} Complete registration</button>
+      <label class="field"><span>Full name in English *</span><input name="fullName" required minlength="3" maxlength="120" autocomplete="name" placeholder="As it should appear on your certificate"></label>
+      <label class="field"><span>Full name in Arabic (optional)</span><input name="fullNameAr" dir="rtl" maxlength="120" placeholder="الاسم بالعربية"></label>
+      <label class="field"><span>Email *</span><input name="email" type="email" required autocomplete="email"></label>
+      <div class="fgrid"><label class="field"><span>Password * (min. 6 characters)</span><input name="password" type="password" required minlength="6" autocomplete="new-password"></label><label class="field"><span>Repeat password *</span><input name="password2" type="password" required minlength="6" autocomplete="new-password"></label></div>
+      <div class="alert warn">${icon('circle-info')} <div>You will get a permanent student number (e.g. <b>EIA-${new Date().getFullYear()}-000001</b>) and an email to confirm your address. You can start studying right away.</div></div>
+      <button class="btn btn-gold btn-block btn-lg" type="submit">${icon('user-plus')} Create my account</button>
       <p class="sm center muted" style="margin:14px 0 0">Already registered? <a href="/login">${t('auth.login')}</a></p></form></div></div>` };
   });
 })();
@@ -1038,25 +1067,26 @@ window.ICONS={"house":["0 0 512 512","M277.8 8.6c-12.3-11.4-31.3-11.4-43.5 0l-22
     if (!App.user) return { redirect: '/login?next=/dashboard' };
     if (App.isStaff()) return { redirect: '/admin' };
     const u = App.user; const tab = q.tab || 'courses';
-    const [cs, pay, certs, ex, me] = await Promise.all([need(api.get('/api/me/courses')), api.get('/api/me/payments'), api.get('/api/me/certificates'), need(api.get('/api/me/exams')), api.get('/api/auth/me')]);
+    const [cs, certs, ex, me] = await Promise.all([need(api.get('/api/me/courses')), api.get('/api/me/certificates'), need(api.get('/api/me/exams')), api.get('/api/auth/me')]);
+    const pay = { payments: [] };
     App.user = me.user || u;
-    const tabs = [['courses', 'dash.courses', 'book-open'], ['exams', 'dash.exams', 'file-pen'], ['certs', 'dash.certs', 'award'], ['payments', 'dash.payments', 'receipt'], ['profile', 'dash.profile', 'user-pen']];
+    const tabs = [['courses', 'dash.courses', 'book-open'], ['exams', 'dash.exams', 'file-pen'], ['certs', 'dash.certs', 'award'], ['profile', 'dash.profile', 'user-pen']];
     let body;
     if (tab === 'courses') body = !cs ? '' : cs.courses.length ? html`<div class="grid g3">${cs.courses.map((c) => html`<div class="card course-card"><div class="cover">${c.image ? html`<img src="${c.image}" alt="">` : html`<div class="ph">${icon('book-quran')}</div>`}</div><div class="body"><span class="kicker">${c.category}</span><h3>${c.title}</h3><div class="progress"><i style="width:${c.progress.percent}%"></i></div><div class="xs muted">${c.progress.done}/${c.progress.total} lessons · ${c.progress.percent}%</div><div class="row"><a class="btn btn-sm" href="/learn/${c.id}">${icon('play')} ${c.progress.done ? 'Continue' : 'Start'}</a>${c.certificate ? html`<span>${statusBadge(c.certificate.status)}</span>` : ''}</div></div></div>`)}</div>` : html`<div class="card card-body center"><p class="muted">You are not enrolled in any course yet.</p><a class="btn" href="/courses">${t('hero.explore')}</a></div>`;
     else if (tab === 'exams') body = !ex ? '' : ex.exams.length ? html`<div class="grid g2">${ex.exams.map(examCard)}</div>` : html`<div class="card card-body center muted">No examinations are available for your courses yet.</div>`;
     else if (tab === 'certs') body = certs.certificates.length ? html`<div class="grid g2">${certs.certificates.map((c) => html`<div class="card card-body"><div class="row between"><b>${c.courseTitle}</b>${statusBadge(c.status)}</div>${c.status === 'ISSUED' ? html`<p class="sm muted">Issued ${date(c.issuedAt)} · <span class="mono">${c.certNo}</span>${c.finalPercent != null ? ' · ' + c.finalPercent + '%' : ''}</p><a class="btn btn-gold btn-sm" href="/verify/${c.certNo}">${icon('award')} View / print certificate</a>` : html`<p class="sm muted">Requested ${date(c.requestedAt)}. Waiting for the academy to issue it.</p>`}</div>`)}</div>` : html`<div class="card card-body center muted">Complete a course and pass its exams to earn a certificate.</div>`;
     else if (tab === 'payments') body = html`<div class="card"><div class="table-wrap"><table><thead><tr><th>Course</th><th>Reference</th><th>Amount</th><th>Date</th><th>Status</th><th>Admin notes</th></tr></thead><tbody>${pay.payments.length ? pay.payments.map((x) => html`<tr><td>${x.courseTitle}</td><td class="mono">${x.reference}</td><td>${money(x.amount, x.currency)}</td><td>${date(x.createdAt)}</td><td>${statusBadge(x.status)}</td><td>${x.notes || '—'}</td></tr>`) : html`<tr><td colspan="6" class="center muted">No payments yet</td></tr>`}</tbody></table></div></div>`;
-    else body = html`<div class="grid g2" style="align-items:start"><div class="card card-body"><h3>Edit profile</h3><form data-form="profile"><label class="field"><span>Full name (appears on certificates)</span><input name="fullName" required minlength="3" value="${u.fullName}"></label><div class="fgrid"><label class="field"><span>Phone</span><input name="phone" value="${u.phone || ''}"></label><label class="field"><span>Country</span><input name="country" value="${u.country || ''}"></label></div><label class="field"><span>Language</span><select name="language">${['English', 'Hausa', 'Arabic'].map((l) => html`<option ${l === u.language ? 'selected' : ''}>${l}</option>`)}</select></label><button class="btn" type="submit">${icon('floppy-disk')} Save</button></form></div>
-      <div class="card card-body"><h3>Change password</h3><form data-form="chpw"><label class="field"><span>Current password</span><input name="currentPassword" type="password" required></label><label class="field"><span>New password (min. 8)</span><input name="newPassword" type="password" required minlength="8"></label><button class="btn" type="submit">${icon('key')} Update password</button></form></div></div>`;
+    else body = html`<div class="grid g2" style="align-items:start"><div class="card card-body"><h3>Edit profile</h3><form data-form="profile"><label class="field"><span>Full name in English (appears on certificates)</span><input name="fullName" required minlength="3" value="${u.fullName}"></label><label class="field"><span>Full name in Arabic</span><input name="fullNameAr" dir="rtl" value="${u.fullNameAr || ''}"></label><div class="fgrid"><label class="field"><span>Phone</span><input name="phone" value="${u.phone || ''}"></label><label class="field"><span>Country</span><input name="country" value="${u.country || ''}"></label></div><label class="field"><span>Language</span><select name="language">${['English', 'Hausa', 'Arabic'].map((l) => html`<option ${l === u.language ? 'selected' : ''}>${l}</option>`)}</select></label><button class="btn" type="submit">${icon('floppy-disk')} Save</button></form></div>
+      <div class="card card-body"><h3>Account</h3><p class="sm">Student No.: <b class="mono">${u.regNumber}</b><br>Email: <b>${u.email}</b><br>${u.emailVerified ? html`<span class="badge b-green">Email verified</span>` : html`<span class="badge b-amber">Email not verified</span> <button class="btn btn-sm btn-ghost" data-act="resend-verify">Resend verification email</button>`}</p><button class="btn btn-ghost" data-act="change-pw">${icon('key')} Change password (email link)</button></div></div>`;
     return { title: t('auth.dashboard'), html: html`<div class="container section" style="padding-top:26px">
-      ${u.status === 'PENDING' ? html`<div class="alert warn">${icon('triangle-exclamation')} <div><b>Registration pending approval.</b> Your permanent student number is <b class="mono">${u.regNumber}</b>. Full access unlocks as soon as the academy approves your account.</div></div>` : ''}
+      ${!u.emailVerified && u.firebase ? html`<div class="alert warn">${icon('envelope')} <div>Your email is not verified yet. Check your inbox (and spam) for our message, or <a href="#" data-act="resend-verify">send it again</a>. You can keep studying meanwhile.</div></div>` : ''}
       ${u.status === 'REJECTED' || u.status === 'SUSPENDED' ? html`<div class="alert err">Your account is ${u.status.toLowerCase()}. Please contact the academy.</div>` : ''}
-      <div class="profile-bar"><div class="row" style="flex-wrap:nowrap"><div class="avatar">${initials(u.fullName)}</div><div><h2 style="color:#fff;margin:0;font-family:var(--sans);font-size:1.3rem">${u.fullName} ${statusBadge(u.status)}</h2><div class="sm" style="color:#b9dccd">Student No. <b class="mono" style="color:var(--gold3)">${u.regNumber}</b> · ${u.email}</div></div></div><button class="btn btn-ghost btn-sm on-dark" data-act="logout">${icon('right-from-bracket')} ${t('auth.logout')}</button></div>
+      <div class="profile-bar"><div class="row" style="flex-wrap:nowrap"><div class="avatar">${initials(u.fullName)}</div><div><h2 style="color:#fff;margin:0;font-family:var(--sans);font-size:1.3rem">${u.fullName}</h2>${u.fullNameAr ? html`<div dir="rtl" style="color:#e9d9a6">${u.fullNameAr}</div>` : ''}<div class="sm" style="color:#b9dccd">Student No. <b class="mono" style="color:var(--gold3)">${u.regNumber}</b> · ${u.email}</div></div></div><button class="btn btn-ghost btn-sm on-dark" data-act="logout">${icon('right-from-bracket')} ${t('auth.logout')}</button></div>
       <div class="tabs">${tabs.map(([k, l, ic]) => html`<a class="tab ${tab === k ? 'active' : ''}" href="/dashboard?tab=${k}" style="text-decoration:none">${icon(ic)} ${t(l)}</a>`)}</div>${body}</div>`,
       mount: () => { if (q.paid === 'ok') toast('Payment confirmed — your course is unlocked!'); else if (q.paid === 'pending') toast('Payment is still being confirmed.'); else if (q.paid === 'error') toast('We could not confirm that payment. If you were charged, contact us.', 'err'); } };
   });
   App.forms.profile = async (f) => { const r = await api.put('/api/auth/profile', formData(f)); App.user = r.user; toast('Profile saved'); App.refreshShell(); };
-  App.forms.chpw = async (f) => { await api.post('/api/auth/change-password', formData(f)); f.reset(); toast('Password updated'); };
+  
 
   function examCard(e) {
     let action;
@@ -1071,13 +1101,10 @@ window.ICONS={"house":["0 0 512 512","M277.8 8.6c-12.3-11.4-31.3-11.4-43.5 0l-22
       <div class="xs muted">${e.courseTitle || ''}</div><div class="sm" style="margin:8px 0">${icon('clock')} ${e.durationMinutes} min · ${e.questionCount} questions · pass mark ${e.passMark}% · attempts ${e.maxAttempts === 0 ? 'unlimited' : e.attemptsUsed + '/' + e.maxAttempts}</div>
       ${when ? html`<div class="xs muted">${icon('calendar')} ${when}</div>` : ''}${e.bestPercent != null ? html`<div class="sm">Best score: <b>${e.bestPercent}%</b> ${e.lastAttemptId ? html`· <a href="/exam/${e.lastAttemptId}">view last result</a>` : ''}</div>` : ''}<div style="margin-top:10px">${action}</div></div>`;
   }
-  App.actions['exam-start'] = (el) => {
-    openModal('Take the exam', html`<form data-form="exam-name" data-id="${el.dataset.id}"><p class="sm">${el.dataset.title} · you have <b>${el.dataset.min} minutes</b> once you begin. Pass mark and result are shown immediately after you submit.</p><label class="fld"><span>Your full name (it will be written on your certificate) *</span><input name="name" required minlength="3" maxlength="120" autocomplete="name" placeholder="e.g. Aisha Musa Bello"></label><button class="btn btn-gold btn-block" type="submit">Start exam</button></form>`);
-    setTimeout(() => { const i = document.querySelector('#modal-root input[name=name]'); if (i) { try { i.value = localStorage.getItem('eza_name') || ''; } catch (e) {} i.focus(); } }, 50);
-  };
-  App.forms['exam-name'] = async (f) => {
-    const name = f.name.value.trim(); try { localStorage.setItem('eza_name', name); } catch (e) {}
-    const r = await api.post('/api/exams/' + f.dataset.id + '/start', { name }); closeModal(); go('/exam/' + r.attemptId);
+  App.actions['exam-start'] = async (el) => {
+    const ok = await confirmBox(html`Start <b>${el.dataset.title}</b>? You will have <b>${el.dataset.min} minutes</b> once you begin. The timer keeps running even if you close the page.`, { okLabel: 'Start now', title: 'Start examination' });
+    if (!ok) return;
+    const r = await api.post(`/api/exams/${el.dataset.id}/start`); go('/exam/' + r.attemptId);
   };
 
   // ---------- LEARNING PORTAL ----------
@@ -1089,23 +1116,22 @@ window.ICONS={"house":["0 0 512 512","M277.8 8.6c-12.3-11.4-31.3-11.4-43.5 0l-22
     const all = allLessons(); const idx = all.findIndex((l) => l.id === L.lessonId); const next = all[idx + 1];
     const eg = d.eligibility;
     el.innerHTML = toHtml(html`
-      <div class="row between" style="padding:6px 0 0"><a class="btn btn-ghost btn-sm" href="${isSt ? '/courses' : '/admin'}">${icon('arrow-left', 'flip')} Back</a><b style="color:var(--gold2)">${d.course.title}</b></div>
+      <div class="row between" style="padding:6px 0 0"><a class="btn btn-ghost btn-sm" href="${isSt ? '/dashboard' : '/admin'}">${icon('arrow-left', 'flip')} Back</a><b style="color:var(--gold2)">${d.course.title}</b></div>
       <div class="learn-grid"><div class="stack">
         ${les ? html`${les.videoUrl ? Media.player(les.videoUrl) : ''}${les.audioUrl ? Media.player(les.audioUrl, { audio: true }) : ''}
         <div class="panel"><div class="row between" style="border-bottom:1px solid #23413a;padding-bottom:12px;margin-bottom:12px"><div><div class="xs" style="color:var(--gold2);letter-spacing:.14em;text-transform:uppercase">Active lesson</div><h2 style="margin:0;font-family:var(--sans);font-size:1.3rem">${les.title}</h2></div>
-          <div class="row">${false ? html`<button class="btn ${les.completed ? 'btn-ghost' : ''}" data-act="toggle-complete">${icon(les.completed ? 'circle-check' : 'check')} ${les.completed ? 'Completed ✓ (undo)' : 'Mark as completed'}</button>` : ''}${next ? html`<button class="btn btn-gold" data-act="next-lesson" data-id="${next.id}">Next ${icon('arrow-right', 'flip')}</button>` : (d.exams.find((x) => x.window === 'OPEN') ? html`<button class="btn btn-gold" data-act="exam-start" data-id="${d.exams.find((x) => x.window === 'OPEN').id}" data-title="${d.exams.find((x) => x.window === 'OPEN').title}" data-min="${d.exams.find((x) => x.window === 'OPEN').durationMinutes}">${icon('file-pen')} Take the exam</button>` : '')}</div></div>
+          <div class="row">${isSt ? html`<button class="btn ${les.completed ? 'btn-ghost' : ''}" data-act="toggle-complete">${icon(les.completed ? 'circle-check' : 'check')} ${les.completed ? 'Completed ✓ (undo)' : 'Mark as completed'}</button>` : ''}${next ? html`<button class="btn btn-gold" data-act="next-lesson" data-id="${next.id}">Next ${icon('arrow-right', 'flip')}</button>` : ''}</div></div>
           <div style="color:#c3d6cf">${(les.description || 'No written notes for this lesson.').split(/\n+/).map((p) => html`<p>${p}</p>`)}</div>
           ${les.attachments.length ? html`<div style="border-top:1px solid #23413a;padding-top:12px"><div class="xs muted" style="text-transform:uppercase;margin-bottom:8px">Resources</div><div class="row">${les.attachments.map((a) => html`<a class="btn btn-ghost btn-sm" href="${a.url}" target="_blank" rel="noopener">${icon('paperclip')} ${a.name}</a>`)}</div></div>` : ''}</div>` : html`<div class="panel center">This course has no lessons yet.</div>`}
       </div><div class="stack">
-        <div class="panel"><div class="row between"><h3 style="margin:0;font-size:1rem">${icon('list')} Modules &amp; lessons</h3></div><div style="height:10px"></div>
-          ${d.modules.map((m) => html`<details class="tree-mod" ${m.lessons.some((l) => l.id === L.lessonId) ? 'open' : ''}><summary><span>${m.title}</span><span class="xs muted">${m.lessons.length}</span></summary>${m.lessons.map((l) => html`<button class="tree-les ${l.id === L.lessonId ? 'active' : ''} ${l.completed ? 'done' : ''}" data-act="pick-lesson" data-id="${l.id}"><span class="ck">${icon('play')}</span><span>${l.title}</span></button>`)}</details>`)}</div>
-        ${d.exams.length ? html`<div class="panel"><h3 style="font-size:1rem">${icon('file-pen')} Examinations</h3>${d.exams.map((e) => html`<div style="border-top:1px solid #23413a;padding:10px 0"><b class="sm">${e.title}</b> ${e.passed ? html`<span class="badge b-green">PASSED</span>` : ''}<div class="xs muted">${e.durationMinutes} min · pass ${e.passMark}%${e.startAt ? ' · opens ' + dateTime(e.startAt) : ''}${e.endAt ? ' · closes ' + dateTime(e.endAt) : ''}</div>${e.window === 'OPEN' ? html`<button class="btn btn-sm" style="margin-top:6px" data-act="exam-start" data-id="${e.id}" data-title="${e.title}" data-min="${e.durationMinutes}">Take the exam</button>` : e.window === 'UPCOMING' ? html`<div class="xs" style="color:var(--gold2)">Not open yet</div>` : ''}</div>`)}</div>` : ''}
-        ${eg ? html`<div class="panel"><h3 style="font-size:1rem">${icon('award')} Certificate</h3><ul class="checklist"><li class="${eg.lessonsOk ? 'ok' : 'no'}">${icon(eg.lessonsOk ? 'circle-check' : 'circle-xmark')} Lessons completed (${eg.lessonsDone}/${eg.lessonsTotal})</li>${eg.exams.filter((x) => x.required).map((x) => html`<li class="${x.passed ? 'ok' : 'no'}">${icon(x.passed ? 'circle-check' : 'circle-xmark')} Pass exam: ${x.title}</li>`)}</ul>
-          ${d.certificate ? html`<div>${statusBadge(d.certificate.status)} ${d.certificate.status === 'ISSUED' ? html`<a class="btn btn-gold btn-block" style="margin-top:8px" href="/verify/${d.certificate.certNo}">View certificate</a>` : html`<p class="xs muted">Awaiting issue by the academy.</p>`}</div>` : html`<button class="btn btn-gold btn-block" data-act="req-cert" ${eg.eligible ? '' : 'disabled'}>Request certificate</button>`}</div>` : ''}
+        <div class="panel"><div class="row between"><h3 style="margin:0;font-size:1rem">${icon('list')} Modules &amp; lessons</h3><span class="xs" style="color:#4ade9b;font-weight:700">${d.progress.percent}%</span></div><div class="progress" style="margin:10px 0 14px"><i style="width:${d.progress.percent}%"></i></div>
+          ${d.modules.map((m) => html`<details class="tree-mod" ${m.lessons.some((l) => l.id === L.lessonId) ? 'open' : ''}><summary><span>${m.title}</span><span class="xs muted">${m.lessons.filter((l) => l.completed).length}/${m.lessons.length}</span></summary>${m.lessons.map((l) => html`<button class="tree-les ${l.id === L.lessonId ? 'active' : ''} ${l.completed ? 'done' : ''}" data-act="pick-lesson" data-id="${l.id}"><span class="ck">${icon(l.completed ? 'circle-check' : 'circle-r')}</span><span>${l.title}</span></button>`)}</details>`)}</div>
+        ${d.exams.length ? html`<div class="panel"><h3 style="font-size:1rem">${icon('file-pen')} Examinations</h3>${d.exams.map((e) => html`<div style="border-top:1px solid #23413a;padding:10px 0"><b class="sm">${e.title}</b> ${e.passed ? html`<span class="badge b-green">PASSED</span>` : ''}<div class="xs muted">${e.durationMinutes} min · pass ${e.passMark}%${e.startAt ? ' · opens ' + dateTime(e.startAt) : ''}${e.endAt ? ' · closes ' + dateTime(e.endAt) : ''}</div>${isSt && !e.passed && e.window === 'OPEN' && e.attemptsLeft !== 0 ? html`<button class="btn btn-sm" style="margin-top:6px" data-act="exam-start" data-id="${e.id}" data-title="${e.title}" data-min="${e.durationMinutes}">${e.inProgressId ? 'Resume' : 'Start'} exam</button>` : e.window === 'UPCOMING' ? html`<div class="xs" style="color:var(--gold2)">Not open yet</div>` : ''}</div>`)}</div>` : ''}
+        ${d.certificate && d.certificate.status === 'ISSUED' ? html`<div class="panel"><h3 style="font-size:1rem">${icon('award')} Certificate</h3><a class="btn btn-gold btn-block" href="/verify/${d.certificate.certNo}">View / print certificate</a></div>` : html`<div class="panel"><h3 style="font-size:1rem">${icon('award')} Certificate</h3><p class="sm muted" style="margin:0">Pass the exam (50% or more) to receive your certificate instantly.</p></div>`}
       </div></div>`);
   }
   route('/learn/:id', async ({ id }, q) => {
-    
+    if (!App.user) return { redirect: '/login?next=' + encodeURIComponent('/learn/' + id) };
     const data = await api.get(`/api/courses/${id}/learn`);
     const all = data.modules.flatMap((m) => m.lessons);
     const want = Number(q.lesson); const firstOpen = all.find((l) => !l.completed) || all[0];
@@ -1129,7 +1155,7 @@ window.ICONS={"house":["0 0 512 512","M277.8 8.6c-12.3-11.4-31.3-11.4-43.5 0l-22
   let timer = null;
   window.addEventListener('eza:route', () => { if (timer) { clearInterval(timer); timer = null; } });
   route('/exam/:id', async ({ id }) => {
-    
+    if (!App.user) return { redirect: '/login?next=' + encodeURIComponent('/exam/' + id) };
     const a = await api.get('/api/attempts/' + id);
     if (a.status === 'IN_PROGRESS') return examTaking(a);
     if (a.certificate) { const v = await api.get('/api/public/verify/' + encodeURIComponent(a.certificate.certNo)); window.__setCert({ ...v, lang: v.brand.cert.language }); a.certHtml = window.__certHtml(); }
@@ -1169,7 +1195,7 @@ window.ICONS={"house":["0 0 512 512","M277.8 8.6c-12.3-11.4-31.3-11.4-43.5 0l-22
     return { title: 'Result', mount: (v) => { if (a.certificate) Cert.fit(v); }, html: html`<div class="container narrow section"><div class="card card-body center"><span class="badge ${a.status === 'EXPIRED' ? 'b-gray' : 'b-blue'}">${a.exam.title}${a.status === 'EXPIRED' ? ' · time expired' : ''}</span>
       <div class="score-ring" style="--p:${r.percent};margin-top:18px"><b>${r.percent}%</b></div>
       <h2 style="margin-bottom:4px">${r.passed ? 'Congratulations — you passed!' : 'You did not reach the pass mark'}</h2><p class="muted">Score ${r.score}/${r.maxScore} · pass mark ${a.exam.passMark}% · submitted ${dateTime(r.submittedAt)}</p>
-      ${a.certificate ? html`<div class="alert ok" style="margin:14px 0;text-align:start">${icon('circle-check')} <div><b>Your certificate is ready.</b> Certificate number: <b class="mono">${a.certificate.certNo}</b>. Keep this number — anyone can verify it on the Verify page.</div></div><div class="row" style="justify-content:center;margin-bottom:10px"><button class="btn btn-gold btn-lg" data-act="cert-print">${icon('download')} Download certificate</button>${Object.keys(Cert.PACK).map((l) => html`<button class="btn btn-ghost" data-act="cert-lang" data-lang="${l}">${l}</button>`)}</div>` : ''}<div class="row" style="justify-content:center"><a class="btn" href="/learn/${a.exam.courseId}">${icon('book-open')} Back to course</a>${!r.passed ? html`<button class="btn btn-gold" data-act="exam-start" data-id="${a.exam.id}" data-title="${a.exam.title}" data-min="${a.exam.durationMinutes}">Retake exam</button>` : ''}</div>
+      ${a.certificate ? html`<div class="alert ok" style="margin:14px 0;text-align:start">${icon('circle-check')} <div><b>Your certificate is ready.</b> Certificate number: <b class="mono">${a.certificate.certNo}</b>. Anyone can verify it on the Verify page.</div></div><div class="row" style="justify-content:center;margin-bottom:10px"><button class="btn btn-gold btn-lg" data-act="cert-print">${icon('download')} Download certificate</button>${Object.keys(Cert.PACK).map((l) => html`<button class="btn btn-ghost" data-act="cert-lang" data-lang="${l}">${l}</button>`)}</div>` : ''}<div class="row" style="justify-content:center"><a class="btn" href="/learn/${a.exam.courseId}">${icon('book-open')} Back to course</a>${!r.passed ? html`<button class="btn btn-gold" data-act="exam-start" data-id="${a.exam.id}" data-title="${a.exam.title}" data-min="${a.exam.durationMinutes}">Retake exam</button>` : ''}</div>
       ${!r.passed ? html`<p class="sm muted" style="margin-top:14px">You need ${a.exam.passMark}% to pass. You can retake the exam as many times as you like.</p>` : ''}</div>${a.certificate ? html`<div id="cert-holder" class="card" style="padding:0;overflow:hidden;margin-top:18px">${Cert.stage(a.certHtml)}</div><p class="xs muted center" style="margin-top:12px">Tip: in the print window choose “Save as PDF”, paper size A4, landscape, and enable “Background graphics”.</p>` : ''}
       ${a.review ? html`<h2 style="margin-top:30px">Answer review</h2>${a.review.map((q, i) => html`<div class="card q-card"><h3>${i + 1}. ${q.text}</h3>${q.options.map((o, k) => html`<div class="opt ${k === q.correct ? 'right' : k === q.yourAnswer ? 'wrong' : ''}">${k === q.correct ? icon('circle-check') : k === q.yourAnswer ? icon('circle-xmark') : ''} <span>${o}</span></div>`)}${q.explanation ? html`<div class="sm muted">${icon('circle-info')} ${q.explanation}</div>` : ''}</div>`)}` : ''}</div>` };
   }
@@ -1194,7 +1220,7 @@ window.ICONS={"house":["0 0 512 512","M277.8 8.6c-12.3-11.4-31.3-11.4-43.5 0l-22
     reload();
   };
 
-  const TABS = [['overview', 'Overview', 'gauge', true], ['courses', 'Courses', 'book', false], ['exams', 'Exams', 'file-pen', false], ['donations', 'Donations', 'hand-holding-heart', true], ['certs', 'Certificates', 'award', true], ['messages', 'Messages', 'inbox', true], ['staff', 'Sub-admins', 'user-shield', true], ['settings', 'Settings', 'gear', true]];
+  const TABS = [['overview', 'Overview', 'gauge', true], ['students', 'Students', 'users', true], ['courses', 'Courses', 'book', false], ['exams', 'Exams', 'file-pen', false], ['donations', 'Donations', 'hand-holding-heart', true], ['certs', 'Certificates', 'award', true], ['messages', 'Messages', 'inbox', true], ['staff', 'Sub-admins', 'user-shield', true], ['settings', 'Settings', 'gear', true]];
   const frame = (tab, body, badges = {}) => html`<div class="page-head" style="padding:22px 0"><div class="container row between"><div><span class="badge b-gold">${isSuper() ? 'Super Admin' : 'Course Admin'}</span><h1 style="font-size:1.6rem;margin:6px 0 0;font-family:var(--sans)">${isSuper() ? 'Academy administration' : 'Course & exam management'}</h1></div><span class="row gap-s"><span class="sm" style="color:#b9dccd">${App.user.fullName}</span><button class="btn btn-sm btn-ghost on-dark" data-act="my-pw">${icon('key')} Change my password</button></span></div></div>
     <div class="container section" style="padding-top:20px"><div class="tabs">${TABS.filter((x) => isSuper() || !x[3]).map(([k, l, ic]) => html`<a class="tab ${tab === k ? 'active' : ''}" href="/admin?tab=${k}" style="text-decoration:none">${icon(ic)} ${l}${badges[k] ? html` <span class="count">${badges[k]}</span>` : ''}</a>`)}</div>${body}</div>`;
   const guard = () => { if (!App.user) return { redirect: '/login?next=/admin' }; if (!App.isStaff()) return { redirect: '/dashboard' }; return null; };
@@ -1217,14 +1243,14 @@ window.ICONS={"house":["0 0 512 512","M277.8 8.6c-12.3-11.4-31.3-11.4-43.5 0l-22
   const TAB_FN = {};
   const statCard = (n, l, c = '') => html`<div class="card stat-card"><b style="${c}">${n}</b><span>${l}</span></div>`;
 
-  TAB_FN.overview = async (s) => html`<div class="grid g4">${statCard(s.courses, 'Courses')}${statCard(s.lessons, 'Lessons')}${statCard(money(s.donationsNgn), 'Donations confirmed (₦)')}${statCard(s.pendingDonations, 'Donations to confirm', 'color:var(--amber)')}${statCard(s.unreadMessages, 'Unread messages')}</div><div class="row" style="margin-top:22px"><button class="btn btn-gold" data-act="new-course">${icon('plus')} New course</button><a class="btn btn-ghost" href="/admin?tab=courses">${icon('book')} My courses</a><a class="btn btn-ghost" href="/admin?tab=settings">${icon('gear')} Settings &amp; logo</a><button class="btn btn-ghost" data-act="quick-maint">${icon('screwdriver-wrench')} Toggle maintenance</button></div>`;
+  TAB_FN.overview = async (s) => html`<div class="grid g4">${statCard(s.students, 'Students')}${statCard(s.courses, 'Courses')}${statCard(s.lessons, 'Lessons')}${statCard(s.exams, 'Exams')}${statCard(s.issuedCerts, 'Certificates issued')}${statCard(money(s.donationsNgn), 'Donations confirmed (₦)')}${statCard(s.unreadMessages, 'Unread messages')}</div><div class="row" style="margin-top:22px"><a class="btn" href="/admin?tab=students">${icon('users')} Students</a><button class="btn btn-gold" data-act="new-course">${icon('plus')} New course</button><a class="btn btn-ghost" href="/admin?tab=settings">${icon('gear')} Settings &amp; logo</a><button class="btn btn-ghost" data-act="quick-maint">${icon('screwdriver-wrench')} Toggle maintenance</button></div>`;
 
   // ---- students ----
   TAB_FN.students = async (s, q) => {
     const { students } = await api.get(`/api/admin/students?q=${encodeURIComponent(q.q || '')}&status=${q.status || ''}`);
     return html`<form class="row" style="margin-bottom:14px" onsubmit="return false" data-form="stu-filter"><input name="q" placeholder="Search name, email or student ID" value="${q.q || ''}" style="max-width:340px"><select name="status" style="max-width:180px">${[['', 'All statuses'], ['PENDING', 'Pending'], ['APPROVED', 'Approved'], ['REJECTED', 'Rejected'], ['SUSPENDED', 'Suspended']].map(([v, l]) => html`<option value="${v}" ${v === (q.status || '') ? 'selected' : ''}>${l}</option>`)}</select><button class="btn" type="submit">${icon('magnifying-glass')} Search</button></form>
       <div class="card"><div class="table-wrap"><table><thead><tr><th>Student ID</th><th>Name</th><th>Contact</th><th>Country</th><th>Courses</th><th>Status</th><th>Actions</th></tr></thead><tbody>${students.length ? students.map((u) => html`<tr><td class="mono">${u.reg_number}</td><td><b>${u.full_name}</b><div class="xs muted">Joined ${date(u.created_at)}</div></td><td>${u.email}<div class="xs muted">${u.phone}</div></td><td>${u.country}</td><td>${u.courses}</td><td>${statusBadge(u.status)}</td>
-        <td><div class="row gap-s">${u.status !== 'APPROVED' ? html`<button class="btn btn-sm" data-act="stu-status" data-id="${u.id}" data-status="APPROVED">Approve</button>` : ''}${u.status === 'PENDING' ? html`<button class="btn btn-sm btn-danger" data-act="stu-status" data-id="${u.id}" data-status="REJECTED">Reject</button>` : ''}${u.status === 'APPROVED' ? html`<button class="btn btn-sm btn-ghost" data-act="stu-status" data-id="${u.id}" data-status="SUSPENDED">Suspend</button>` : ''}<button class="btn btn-sm btn-ghost" data-act="stu-view" data-id="${u.id}">View</button><button class="btn btn-sm btn-ghost" data-act="reset-pw" data-id="${u.id}" data-name="${u.full_name}">${icon('key')}</button><button class="btn btn-sm btn-ghost" data-act="stu-del" data-id="${u.id}" data-name="${u.full_name}">${icon('trash')}</button></div></td></tr>`) : html`<tr><td colspan="7" class="center muted">No students found</td></tr>`}</tbody></table></div></div>`;
+        <td><div class="row gap-s">${u.status !== 'APPROVED' ? html`<button class="btn btn-sm" data-act="stu-status" data-id="${u.id}" data-status="APPROVED">Approve</button>` : ''}${u.status === 'PENDING' ? html`<button class="btn btn-sm btn-danger" data-act="stu-status" data-id="${u.id}" data-status="REJECTED">Reject</button>` : ''}${u.status === 'APPROVED' ? html`<button class="btn btn-sm btn-ghost" data-act="stu-status" data-id="${u.id}" data-status="SUSPENDED">Suspend</button>` : ''}<button class="btn btn-sm btn-ghost" data-act="stu-view" data-id="${u.id}">View</button><button class="btn btn-sm btn-ghost" data-act="stu-del" data-id="${u.id}" data-name="${u.full_name}">${icon('trash')}</button></div></td></tr>`) : html`<tr><td colspan="7" class="center muted">No students found</td></tr>`}</tbody></table></div></div>`;
   };
   App.forms['stu-filter'] = (f) => go(`/admin?tab=students&q=${encodeURIComponent(f.q.value)}&status=${f.status.value}`);
   App.actions['stu-status'] = async (el) => { await api.put('/api/admin/students/' + el.dataset.id, { status: el.dataset.status }); toast('Student ' + el.dataset.status.toLowerCase()); reload(); };
@@ -1234,7 +1260,7 @@ window.ICONS={"house":["0 0 512 512","M277.8 8.6c-12.3-11.4-31.3-11.4-43.5 0l-22
   App.actions['stu-view'] = async (el) => {
     const d = await api.get('/api/admin/students/' + el.dataset.id); const s = d.student;
     const { courses } = await api.get('/api/admin/courses');
-    openModal(s.fullName, html`<p><span class="mono bold">${s.regNumber}</span> · ${s.email} · ${s.phone} · ${s.country} ${statusBadge(s.status)}</p><p class="xs muted">Last login: ${dateTime(d.lastLoginAt)}</p>
+    openModal(s.fullName, html`<p><span class="mono bold">${s.regNumber}</span> · ${s.email} · ${s.phone} · ${s.country} ${statusBadge(s.status)}</p>${s.fullNameAr ? html`<p dir="rtl">${s.fullNameAr}</p>` : ''}<p class="xs muted">Last login: ${dateTime(d.lastLoginAt)}</p>
       <h3>Enrolled courses</h3>${d.courses.length ? d.courses.map((c) => html`<div class="row between" style="padding:6px 0;border-top:1px solid var(--line)"><span>${c.title} <span class="xs muted">(${c.source}) · ${c.lessonsDone}/${c.lessonsTotal} lessons</span></span><button class="btn btn-sm btn-ghost" data-act="unenroll" data-sid="${s.id}" data-cid="${c.id}">Remove</button></div>`) : html`<p class="muted sm">None</p>`}
       <form class="row" style="margin-top:10px;flex-wrap:nowrap" data-form="enroll"><input type="hidden" name="sid" value="${s.id}"><select name="courseId">${courses.map((c) => html`<option value="${c.id}">${c.title}</option>`)}</select><button class="btn btn-sm" type="submit">Enrol</button></form>
       <h3 style="margin-top:18px">Exam attempts</h3>${d.attempts.length ? d.attempts.map((a) => html`<div class="row between sm" style="padding:5px 0;border-top:1px solid var(--line)"><span>${a.examTitle}</span><span>${a.percent ?? '—'}% ${statusBadge(a.status === 'IN_PROGRESS' ? 'PENDING' : a.passed ? 'PASSED' : a.status)}</span></div>`) : html`<p class="muted sm">None</p>`}`, { wide: true });
@@ -1497,7 +1523,7 @@ window.ICONS={"house":["0 0 512 512","M277.8 8.6c-12.3-11.4-31.3-11.4-43.5 0l-22
   App.socialIcons = socialIcons;
 
   function authButtons() {
-    if (!App.user) return html`<a class="btn btn-ghost btn-sm on-dark" href="/login" aria-label="Administrator sign in">${icon('gear')} Admin</a>`;
+    if (!App.user) return html`<a class="btn btn-ghost btn-sm on-dark" href="/login">${icon('right-to-bracket')} ${t('auth.login')}</a><a class="btn btn-gold btn-sm" href="/register">${icon('user-plus')} ${t('auth.register')}</a>`;
     return html`<a class="btn btn-gold btn-sm" href="${isStaff() ? '/admin' : '/dashboard'}">${icon(isStaff() ? 'gear' : 'user')} ${isStaff() ? t('auth.admin') : t('auth.dashboard')}</a><button class="btn btn-ghost btn-sm on-dark hide-m" data-act="logout">${icon('right-from-bracket')} ${t('auth.logout')}</button>`;
   }
 
@@ -1516,13 +1542,13 @@ window.ICONS={"house":["0 0 512 512","M277.8 8.6c-12.3-11.4-31.3-11.4-43.5 0l-22
         <nav class="nav">${navItems().map(([p, k, ic]) => html`<a href="${p}" class="${active(p) ? 'active' : ''}">${icon(ic)} ${t(k)}</a>`)}</nav>
         <div class="header-actions"><span class="hide-m row gap-s" style="flex-wrap:nowrap">${langBtns}</span>${authButtons()}<button class="menu-btn" data-act="toggle-menu" aria-label="Menu">${icon('bars')}</button></div>
       </div>
-      <div class="mobile-nav" id="mobile-nav">${navItems().map(([p, k]) => html`<a href="${p}">${t(k)}</a>`)}<div class="row" style="margin-top:12px">${langBtns}${App.user ? html`<button class="btn btn-ghost btn-sm on-dark" data-act="logout">${t('auth.logout')}</button>` : html`<a class="btn btn-gold btn-sm" href="/login">Admin</a>`}</div></div>
+      <div class="mobile-nav" id="mobile-nav">${navItems().map(([p, k]) => html`<a href="${p}">${t(k)}</a>`)}<div class="row" style="margin-top:12px">${langBtns}${App.user ? html`<button class="btn btn-ghost btn-sm on-dark" data-act="logout">${t('auth.logout')}</button>` : html`<a class="btn btn-gold btn-sm" href="/register">${t('auth.register')}</a>`}</div></div>
       </header>
       <main id="view" style="flex:1"></main>
       <footer class="site-footer"><div class="container">
         <div class="foot-grid">
           <div><div class="brand" style="margin-bottom:12px"><img src="${s.logo}" alt=""><span><b>${s.siteName}</b></span></div><p>${t('footer.about')}</p><div class="socials">${socialIcons().map(([n, u, l]) => html`<a href="${u}" target="_blank" rel="noopener" aria-label="${l}">${icon(n)}</a>`)}</div></div>
-          <div><h4>${t('footer.quick')}</h4><ul>${navItems().map(([p, k]) => html`<li><a href="${p}">${t(k)}</a></li>`)}<li><a href="/login">Admin</a></li></ul></div>
+          <div><h4>${t('footer.quick')}</h4><ul>${navItems().map(([p, k]) => html`<li><a href="${p}">${t(k)}</a></li>`)}<li><a href="/login">${t('auth.login')}</a></li></ul></div>
           <div><h4>${t('footer.policies')}</h4><ul><li><a href="/terms">${t('footer.terms')}</a></li><li><a href="/privacy">${t('footer.privacy')}</a></li><li><a href="/refund">${t('footer.refund')}</a></li><li><a href="/donate">${t('nav.donate')}</a></li></ul></div>
           <div><h4>${t('footer.contact')}</h4><ul><li>${icon('envelope')} <a href="mailto:${s.email}">${s.email}</a></li><li>${icon('whatsapp')} <a href="https://wa.me/${s.whatsapp}" target="_blank" rel="noopener">${s.phone}</a></li>${s.social.facebook ? html`<li>${icon('facebook')} <a href="${s.social.facebook}" target="_blank" rel="noopener">Facebook</a></li>` : ''}</ul></div>
         </div>
@@ -1536,7 +1562,7 @@ window.ICONS={"house":["0 0 512 512","M277.8 8.6c-12.3-11.4-31.3-11.4-43.5 0l-22
 
   App.actions['toggle-menu'] = () => document.getElementById('mobile-nav').classList.toggle('open');
   App.actions['set-lang'] = (el) => { I18N.set(el.dataset.lang); App.refreshShell(); };
-  App.actions.logout = async () => { await api.post('/api/auth/logout'); App.user = null; await App.refreshShell(); go('/'); toast('You have been signed out'); };
+  App.actions.logout = async () => { try { await api.post('/api/auth/logout'); } catch (e) {} await EZA_AUTH.signOut(); App.user = null; await App.refreshShell(); go('/'); toast('You have been signed out'); };
   window.addEventListener('eza:session', () => { App.refreshShell(); });
   window.addEventListener('eza:maintenance', async () => { await loadBoot().catch(() => {}); shell(); render('keep'); });
   window.addEventListener('eza:route', () => {
@@ -1544,8 +1570,13 @@ window.ICONS={"house":["0 0 512 512","M277.8 8.6c-12.3-11.4-31.3-11.4-43.5 0l-22
   });
 
   App.forms.login = async (f) => {
-    const d = formData(f);
-    const r = await api.post('/api/auth/login', { email: d.email, password: d.password });
+    const d = formData(f); const email = d.email.trim();
+    let r;
+    try { r = await EZA_AUTH.signIn(email, d.password); }
+    catch (e) {
+      if (e.code === 'admin-fallback') { r = await api.post('/api/auth/login', { email, password: d.password }); }
+      else throw e;
+    }
     App.user = r.user; shell();
     const next = App.route.query.next;
     toast('Welcome back, ' + r.user.fullName.split(' ')[0]);
@@ -1554,10 +1585,14 @@ window.ICONS={"house":["0 0 512 512","M277.8 8.6c-12.3-11.4-31.3-11.4-43.5 0l-22
   App.forms.register = async (f) => {
     const d = formData(f);
     if (d.password !== d.password2) throw new Error('The two passwords do not match');
-    const r = await api.post('/api/auth/register', { fullName: d.fullName, email: d.email, phone: d.phone, country: d.country, language: d.language, password: d.password });
-    App.user = r.user; shell(); toast('Registration complete. Your student number is ' + r.user.regNumber);
+    const r = await EZA_AUTH.register(d.email.trim(), d.password, d.fullName.trim(), (d.fullNameAr || '').trim());
+    App.user = r.user; shell(); toast('Welcome! Your student number is ' + r.user.regNumber + '. A verification email was sent to ' + r.user.email);
     go('/dashboard');
   };
+  App.actions['forgot-pw'] = (el, ev) => { if (ev && ev.preventDefault) ev.preventDefault(); openModal('Reset password', html`<form data-form="forgot"><p class="sm">Enter your email. We will send you a link to choose a new password.</p><label class="field"><span>Email</span><input name="email" type="email" required autocomplete="email"></label><button class="btn btn-block" type="submit">Send reset link</button></form>`); };
+  App.forms.forgot = async (f) => { await EZA_AUTH.reset(f.email.value.trim()); closeModal(); toast('If this email is registered, a reset link has been sent. Check your inbox and spam.'); };
+  App.actions['change-pw'] = async () => { await EZA_AUTH.reset(App.user.email); toast('A link to change your password was sent to ' + App.user.email); };
+  App.actions['resend-verify'] = async (el, ev) => { if (ev && ev.preventDefault) ev.preventDefault(); await EZA_AUTH.resend(); toast('Verification email sent to ' + App.user.email + '. Check spam too.'); };
 
   (async function start() {
     try { await loadBoot(); } catch (e) { document.getElementById('app').innerHTML = '<div class="loading">The academy is unreachable right now. Please try again shortly.<br><small style="display:block;margin-top:14px;color:#8a3b00;word-break:break-word">Reason: ' + (window.__LASTERR || (e && e.message) || 'unknown') + '</small></div>'; return; }
