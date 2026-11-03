@@ -895,9 +895,9 @@ window.ICONS={"house":["0 0 512 512","M277.8 8.6c-12.3-11.4-31.3-11.4-43.5 0l-22
     return { title: t('courses.title'), html: html`
       <div class="page-head"><div class="container"><h1>${t('courses.title')}</h1><p>${t('courses.sub')}</p></div></div>
       <div class="container section" style="padding-top:28px">
-        <div class="card card-body" style="margin-bottom:24px"><div class="fgrid" style="grid-template-columns:2fr 1fr;margin:0">
+        <div class="card card-body" style="margin-bottom:24px"><div class="fgrid" style="grid-template-columns:2fr 1fr 1fr;margin:0">
           <input id="c-q" data-input="filter-courses" placeholder="${t('courses.search')}"><select id="c-cat" data-on="filter-courses"><option value="">${t('courses.allCat')}</option>${cats.map((c) => html`<option>${c}</option>`)}</select>
-          </div></div>
+          <select id="c-type" data-on="filter-courses"><option value="">${t('courses.allType')}</option><option value="FREE">${t('courses.free')}</option><option value="PAID">${t('courses.paid')}</option></select></div></div>
         <div class="grid g3" id="c-grid"></div></div>`, mount: catalogGrid };
   });
 
@@ -916,7 +916,8 @@ window.ICONS={"house":["0 0 512 512","M277.8 8.6c-12.3-11.4-31.3-11.4-43.5 0l-22
     else if (App.isStaff()) panel = html`<a class="btn btn-block" href="/learn/${c.id}">${icon('eye')} Preview course content</a><a class="btn btn-ghost btn-block" style="margin-top:8px" href="/admin/courses/${c.id}">${icon('pen')} Edit course</a>`;
     else if (u.status !== 'APPROVED') panel = html`<div class="alert err">Your account is not active. Please contact the academy.</div>`;
     else if (d.access?.enrolled) panel = html`<a class="btn btn-gold btn-block btn-lg" href="/learn/${c.id}">${icon('play')} Continue learning</a>`;
-    else panel = html`<button class="btn btn-gold btn-block btn-lg" data-act="enroll-free" data-id="${c.id}">${icon('book-open')} Join this course</button>`;
+    else if (c.type === 'FREE') panel = html`<button class="btn btn-gold btn-block btn-lg" data-act="enroll-free" data-id="${c.id}">${icon('book-open')} Join this course</button>`;
+    else panel = html`${d.access?.lastPayment === 'PENDING' ? html`<div class="alert warn">${icon('hourglass-half')} <div>We are confirming your payment. Refresh in a minute; the course opens automatically once Paystack confirms it.</div></div>` : ''}<button class="btn btn-gold btn-block btn-lg" data-act="pay-online" data-id="${c.id}">${icon('wallet')} Pay with Paystack</button><p class="xs muted center" style="margin:8px 0 0">Secure payment by card or bank transfer. The course opens right after payment.</p>`;
     return { title: c.title, html: html`
       <div class="page-head"><div class="container"><span class="badge b-gold">${c.category}</span><h1 style="margin-top:10px">${c.title}</h1><p>${c.instructor} · ${c.modules} ${t('course.modules')} · ${c.lessons} ${t('course.lessons')} · ${c.students} ${t('course.students')}</p></div></div>
       <div class="container section" style="padding-top:30px"><div class="grid" style="grid-template-columns:1fr 360px;align-items:start">
@@ -927,11 +928,11 @@ window.ICONS={"house":["0 0 512 512","M277.8 8.6c-12.3-11.4-31.3-11.4-43.5 0l-22
           ${d.exams.length ? html`<h2 style="margin-top:28px">Examinations</h2>${d.exams.map((e) => html`<div class="card card-body flat" style="margin-bottom:10px"><b>${e.title}</b><div class="xs muted">${e.duration_minutes} minutes · pass mark ${e.pass_mark}%${e.start_at ? ' · opens ' + dateTime(e.start_at) : ''}${e.end_at ? ' · closes ' + dateTime(e.end_at) : ''}</div></div>`)}` : ''}
         </div>
         <aside class="card card-body" style="position:sticky;top:90px"><div style="font-size:1.8rem;margin-bottom:12px">${priceHtml(c)}</div>${panel}
-          <ul class="sm muted" style="padding-inline-start:18px;margin-bottom:0"><li>Free course</li><li>Video &amp; audio lessons</li><li>Final exam — retake as often as you need</li><li>Certificate issued instantly when you pass</li></ul></aside></div></div>` };
+          <ul class="sm muted" style="padding-inline-start:18px;margin-bottom:0"><li>Video &amp; audio lessons</li><li>Final exam — retake as often as you need</li><li>Certificate issued instantly when you pass</li></ul></aside></div></div>` };
   }
   route('/courses/:id', coursePage);
   App.actions['enroll-free'] = async (el) => { await api.post(`/api/courses/${el.dataset.id}/enroll`); toast('You have joined this course'); go('/learn/' + el.dataset.id); };
-  App.actions['pay-online'] = async (el) => { const r = await api.post(`/api/courses/${el.dataset.id}/pay/paystack`); VLOC.href = r.url; };
+  App.actions['pay-online'] = async (el) => { const r = await api.post(`/api/courses/${el.dataset.id}/pay/paystack`); if (r.already) { go('/learn/' + el.dataset.id); return; } window.location.href = r.url; };
   App.actions.checkout = async (el) => {
     const { course: c } = await api.get('/api/public/courses/' + el.dataset.id);
     openModal('Pay by bank transfer', html`
@@ -1027,8 +1028,8 @@ window.ICONS={"house":["0 0 512 512","M277.8 8.6c-12.3-11.4-31.3-11.4-43.5 0l-22
     <h2>Security</h2><p>Passwords are stored only as salted hashes. Payment receipts are visible only to academy administrators. We do not sell your data.</p>
     <h2>Your rights</h2><p>You may ask to correct or delete your account by contacting <a href="mailto:${em()}">${em()}</a>. Some records (such as issued certificates) may be kept to preserve their verifiability.</p>`);
   legal('/refund', 'Payment & Refund Policy', () => html`
-    <h2>How to pay</h2><p>Pay by bank transfer to the account shown at checkout (default currency: Nigerian Naira, ₦), then upload your receipt and transaction reference. Where enabled, you may also pay online by card or bank through Paystack, which unlocks the course automatically. International students can contact us on WhatsApp for options.</p>
-    <h2>Confirmation</h2><p>Manual payments are confirmed by an administrator, usually within 24 hours. Your course unlocks once approved; if a payment cannot be confirmed you will see the reason in your dashboard.</p>
+    <h2>How to pay</h2><p>Paid courses are paid online through Paystack (card or bank transfer, default currency: Nigerian Naira, ₦). The course unlocks automatically as soon as Paystack confirms your payment.</p>
+    <h2>Confirmation</h2><p>If your payment is delayed, wait a few minutes and refresh the course page. If you were charged and the course is still locked, contact us with your Paystack reference.</p>
     <h2>Refunds</h2><p>Because access to digital content is granted immediately, paid courses are generally non-refundable. If you were charged twice, paid for the wrong course, or could not access a course because of a technical fault we cannot fix, contact us within 7 days with your reference and we will refund or transfer the payment.</p>
     <h2>Donations</h2><p>Donations (sadaqah) are voluntary and are used for the academy's educational work and support for needy students.</p>
     <h2>Contact</h2><p><a href="mailto:${em()}">${em()}</a> · WhatsApp ${S().phone}</p>`);
@@ -1243,7 +1244,7 @@ window.ICONS={"house":["0 0 512 512","M277.8 8.6c-12.3-11.4-31.3-11.4-43.5 0l-22
   const TAB_FN = {};
   const statCard = (n, l, c = '') => html`<div class="card stat-card"><b style="${c}">${n}</b><span>${l}</span></div>`;
 
-  TAB_FN.overview = async (s) => html`<div class="grid g4">${statCard(s.students, 'Students')}${statCard(s.courses, 'Courses')}${statCard(s.lessons, 'Lessons')}${statCard(s.exams, 'Exams')}${statCard(s.issuedCerts, 'Certificates issued')}${statCard(money(s.donationsNgn), 'Donations confirmed (₦)')}${statCard(s.unreadMessages, 'Unread messages')}</div><div class="row" style="margin-top:22px"><a class="btn" href="/admin?tab=students">${icon('users')} Students</a><button class="btn btn-gold" data-act="new-course">${icon('plus')} New course</button><a class="btn btn-ghost" href="/admin?tab=settings">${icon('gear')} Settings &amp; logo</a><button class="btn btn-ghost" data-act="quick-maint">${icon('screwdriver-wrench')} Toggle maintenance</button></div>`;
+  TAB_FN.overview = async (s) => html`<div class="grid g4">${statCard(s.students, 'Students')}${statCard(s.courses, 'Courses')}${statCard(s.lessons, 'Lessons')}${statCard(s.exams, 'Exams')}${statCard(s.issuedCerts, 'Certificates issued')}${statCard(money(s.revenueNgn), 'Course sales (₦)')}${statCard(money(s.donationsNgn), 'Donations confirmed (₦)')}${statCard(s.unreadMessages, 'Unread messages')}</div><div class="row" style="margin-top:22px"><a class="btn" href="/admin?tab=students">${icon('users')} Students</a><button class="btn btn-gold" data-act="new-course">${icon('plus')} New course</button><a class="btn btn-ghost" href="/admin?tab=settings">${icon('gear')} Settings &amp; logo</a><button class="btn btn-ghost" data-act="quick-maint">${icon('screwdriver-wrench')} Toggle maintenance</button></div>`;
 
   // ---- students ----
   TAB_FN.students = async (s, q) => {
@@ -1330,7 +1331,7 @@ window.ICONS={"house":["0 0 512 512","M277.8 8.6c-12.3-11.4-31.3-11.4-43.5 0l-22
     return html`<div class="row between" style="margin-bottom:16px"><h3 style="margin:0">All courses</h3><button class="btn btn-gold" data-act="new-course">${icon('plus')} New course</button></div>
       ${courses.length ? html`<div class="stack">${courses.map((c) => html`<div class="card card-body row between"><div style="min-width:240px;flex:1"><b>${c.title}</b> ${c.published ? '' : html`<span class="badge b-gray">Draft</span>`} <span class="badge ${c.type === 'FREE' ? 'b-green' : 'b-gold'}">${c.type === 'FREE' ? 'Free' : money(c.finalPrice, c.currency)}</span><div class="xs muted">${c.category} · ${c.modules} modules · ${c.lessons} lessons · ${c.exams} exams · ${c.students} students</div></div><div class="row gap-s"><a class="btn btn-sm" href="/admin/courses/${c.id}">${icon('pen')} Edit modules &amp; lessons</a><a class="btn btn-sm btn-ghost" href="/courses/${c.id}">View</a><button class="btn btn-sm btn-ghost" data-act="course-del" data-id="${c.id}" data-name="${c.title}">${icon('trash')}</button></div></div>`)}</div>` : html`<div class="card card-body center muted">No courses yet. Create your first course.</div>`}`;
   };
-  App.actions['new-course'] = () => openModal('New course', html`<form data-form="course-new">${fld('Course title *', 'title', '', 'required')}<div class="fgrid">${sel('Category', 'category', S().categories, '')}</div>${area('Short description', 'description', '', 3)}<p class="help">You will add modules and lessons on the next page.</p><button class="btn btn-block" type="submit">Create &amp; continue</button></form>`);
+  App.actions['new-course'] = () => openModal('New course', html`<form data-form="course-new">${fld('Course title *', 'title', '', 'required')}<div class="fgrid">${sel('Category', 'category', S().categories, '')}${sel('Type', 'type', [['FREE', 'Free'], ['PAID', 'Paid']], 'FREE')}</div>${area('Short description', 'description', '', 3)}<p class="help">You will add modules and lessons on the next page.</p><button class="btn btn-block" type="submit">Create &amp; continue</button></form>`);
   App.forms['course-new'] = async (f) => { const d = formData(f); const r = await api.post('/api/admin/courses', { ...d, published: false, price: 0, instructor: S().founder.name }); closeModal(); toast('Course created'); go('/admin/courses/' + r.id); };
   App.actions['course-del'] = async (el) => {
     if (!(await confirmBox(html`Delete course <b>${el.dataset.name}</b>?`, { danger: true, okLabel: 'Delete' }))) return;
@@ -1353,8 +1354,8 @@ window.ICONS={"house":["0 0 512 512","M277.8 8.6c-12.3-11.4-31.3-11.4-43.5 0l-22
       <details class="card card-body" style="margin-bottom:22px" ${c.published && c.description ? '' : 'open'}><summary class="bold" style="cursor:pointer;font-size:1.05rem">${icon('book')} Course details &amp; pricing</summary><form data-form="course-save" style="margin-top:16px"><input type="hidden" name="id" value="${c.id}">
         ${fld('Course title *', 'title', c.title, 'required')}
         <div class="fgrid">${sel('Category', 'category', [...new Set([...S().categories, c.category])], c.category)}${fld('Instructor', 'instructor', c.instructor)}</div>
-        <div class="fgrid">${sel('Visibility', 'published', [['1', 'Published (visible to students)'], ['0', 'Draft (hidden)']], c.published ? '1' : '0')}</div>
-        
+        <div class="fgrid">${sel('Type', 'type', [['FREE', 'Free'], ['PAID', 'Paid']], c.type, 'data-on="price-toggle"')}${sel('Visibility', 'published', [['1', 'Published (visible to students)'], ['0', 'Draft (hidden)']], c.published ? '1' : '0')}</div>
+        <div class="fgrid" id="price-box" style="${c.type === 'PAID' ? '' : 'display:none'}">${fld('Price', 'price', c.price, 'type=number min=0 step=0.01')}${sel('Currency', 'currency', ['NGN', 'USD', 'GHS', 'GBP', 'EUR', 'SAR', 'AED'], c.currency)}${fld('Discount %', 'discountPct', c.discount_pct, 'type=number min=0 max=100')}</div>
         ${area('Description', 'description', c.description, 5)}
         <label class="field"><span>Cover image</span><div class="row" style="flex-wrap:nowrap"><input name="image" value="${c.image}" placeholder="https://… or upload →"><label class="btn btn-ghost btn-sm nowrap">${icon('upload')} Upload<input type="file" accept="image/*" hidden data-on="cover-upload"></label></div></label>
         <button class="btn" type="submit">${icon('floppy-disk')} Save course</button></form></details>
@@ -1600,6 +1601,18 @@ window.ICONS={"house":["0 0 512 512","M277.8 8.6c-12.3-11.4-31.3-11.4-43.5 0l-22
     if (App.boot.settings.logo) document.querySelector('link[rel=icon]').href = App.boot.settings.logo;
     shell();
     render('keep');
+    try {
+      const ref = new URLSearchParams(window.location.search).get('reference');
+      if (ref) {
+        history.replaceState({}, '', window.location.pathname + window.location.hash);
+        if (App.user) {
+          const r = await api.get('/api/payments/paystack/verify?reference=' + encodeURIComponent(ref));
+          if (r.status === 'APPROVED') { toast('Payment confirmed — the course is now open!'); go('/learn/' + r.courseId); }
+          else if (r.status === 'PENDING') { toast('We are still confirming your payment. Please refresh in a minute.'); go('/dashboard'); }
+          else toast('This payment was not completed.', 'err');
+        }
+      }
+    } catch (e) { toast('We could not confirm the payment yet. If you were charged, contact us.', 'err'); }
   })();
 })();
 
