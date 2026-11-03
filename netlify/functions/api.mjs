@@ -1,4 +1,3 @@
-
 /*
  * Elzarandawy Islamic Academy - website server (Netlify Function, stores data in Netlify Blobs).
  * Students sign up with Firebase Authentication (email + password); this function verifies their Firebase ID token.
