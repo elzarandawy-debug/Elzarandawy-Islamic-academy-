@@ -1,3 +1,4 @@
+
 /*
  * Elzarandawy Islamic Academy - website server (Netlify Function, stores data in Netlify Blobs).
  * Students sign up with Firebase Authentication (email + password); this function verifies their Firebase ID token.
@@ -167,14 +168,14 @@ function readToken_(t) {
       founder: { name: s.founderName, title: s.founderTitle, bio: s.founderBio, photo: s.founderPhoto },
       email: s.email, phone: s.phone, whatsapp: s.whatsapp, social: s.social, announcement: s.announcement, maintenance: s.maintenance,
       defaultVideoUrl: s.defaultVideoUrl, defaultCurrency: s.defaultCurrency, bank: s.bank, donation: s.donation, categories: s.categories,
-      cert: { signatoryName: s.cert.signatoryName, signatoryTitle: s.cert.signatoryTitle, language: s.cert.language, extraLogos: s.cert.extraLogos },
+      cert: { signatoryName: s.cert.signatoryName, signatoryTitle: s.cert.signatoryTitle, signatoryTitleAr: s.cert.signatoryTitleAr || '', tagline: s.cert.tagline || '', stampText: s.cert.stampText || '', partners: s.cert.partners || [], language: s.cert.language, extraLogos: s.cert.extraLogos },
     };
   }
 
   // ---------- seed ----------
   function seed() {
     ins('users', { email: 'elzarandawy@gmail.com', password_hash: hashPw(process.env.ADMIN_PASSWORD || 'Alishehu@723'), full_name: 'Shaykh Ali Shehu Zaranda', reg_number: null, role: 'SUPER_ADMIN', status: 'APPROVED', phone: '+2349135610001', country: 'Nigeria', language: 'English', token_version: 0, created_at: nowIso(), last_login_at: null });
-    const c = ins('courses', { title: 'Arabic for Beginners (Sample Course)', category: 'Arabic Language', type: 'FREE', price: 0, currency: 'NGN', discount_pct: 0, instructor: 'Shaykh Ali Shehu Zaranda', description: 'A sample course with a short exam. The admin can edit or delete it and create new courses.', image: '', published: 1, created_by: 1, created_at: nowIso(), updated_at: nowIso() });
+    const c = ins('courses', { title_ar: 'اللغة العربية للمبتدئين', title: 'Arabic for Beginners (Sample Course)', category: 'Arabic Language', type: 'FREE', price: 0, currency: 'NGN', discount_pct: 0, instructor: 'Shaykh Ali Shehu Zaranda', description: 'A sample course with a short exam. The admin can edit or delete it and create new courses.', image: '', published: 1, created_by: 1, created_at: nowIso(), updated_at: nowIso() });
     const m1 = ins('modules', { course_id: c.id, title: 'Module 1: The Arabic Alphabet', description: 'Letters and sounds', position: 0 });
     const m2 = ins('modules', { course_id: c.id, title: 'Module 2: First Words', description: '', position: 1 });
     [[m1, 'Lesson 1: Introduction'], [m1, 'Lesson 2: Letters Alif to Thaa'], [m2, 'Lesson 3: Greetings']].forEach(([m, t], i) => ins('lessons', { module_id: m.id, course_id: c.id, title: t, description: 'Sample lesson. Admins can paste a Google Drive, YouTube or Facebook link here. If left empty, the default academy video plays.', video_url: '', audio_url: '', attachments: [], position: i }));
@@ -226,7 +227,7 @@ function readToken_(t) {
   function certView(no) {
     const c = find('certificates', (x) => x.cert_no === no && x.status === 'ISSUED'); if (!c) return null;
     const u = c.user_id ? find('users', (x) => x.id === c.user_id) : null, co = find('courses', (x) => x.id === c.course_id); if (!co) return null;
-    return { certNo: c.cert_no, studentName: (u && u.full_name) || c.student_name || '', studentNameAr: (u && u.name_ar) || '', regNumber: u ? u.reg_number : '', courseTitle: co.title, instructor: co.instructor, category: co.category, issuedAt: c.issued_at, finalPercent: c.final_percent, grade: U.gradeLabel(c.final_percent) };
+    return { certNo: c.cert_no, studentName: (u && u.full_name) || c.student_name || '', studentNameAr: (u && u.name_ar) || '', regNumber: u ? u.reg_number : '', courseTitle: co.title, courseTitleAr: co.title_ar || '', instructor: co.instructor, category: co.category, issuedAt: c.issued_at, finalPercent: c.final_percent, grade: U.gradeLabel(c.final_percent) };
   }
   const courseProgress = (uid, cid) => { const ls = filt('lessons', (l) => l.course_id === cid), ids = new Set(ls.map((l) => l.id)); const done = filt('progress', (p) => p.user_id === uid && ids.has(p.lesson_id)).length; return { total: ls.length, done, percent: ls.length ? Math.round((done / ls.length) * 100) : 0 }; };
   function courseCard(c) {
@@ -309,7 +310,7 @@ function readToken_(t) {
   });
   R('GET', '/api/public/verify/:q', null, (c) => {
     const q = decodeURIComponent(c.params.q).trim().toUpperCase().slice(0, 40); const s = publicSettings(getSettings()); const cert = certView(q);
-    if (cert) return { type: 'certificate', certificate: cert, brand: { siteName: s.siteName, siteNameAr: s.siteNameAr, logo: s.logo, seal: s.seal, signature: s.signature, cert: s.cert, tagline: s.tagline, taglineAr: s.taglineAr } };
+    if (cert) return { type: 'certificate', certificate: cert, brand: { siteName: s.siteName, siteNameAr: s.siteNameAr, logo: s.logo, seal: s.seal, signature: s.signature, cert: s.cert, tagline: s.tagline, taglineAr: s.taglineAr, email: s.email, phone: s.phone, whatsapp: s.whatsapp, social: s.social } };
     const st = find('users', (u) => u.reg_number === q && u.role === 'STUDENT');
     if (st) return { type: 'student', student: { fullName: st.full_name, regNumber: st.reg_number, status: st.status, since: st.created_at }, certificates: filt('certificates', (x) => x.user_id === st.id && x.status === 'ISSUED').map((x) => ({ cert_no: x.cert_no, issued_at: x.issued_at, course_title: (find('courses', (k) => k.id === x.course_id) || {}).title })) };
     throw new HttpError(404, 'No certificate or student was found with that number');
@@ -417,7 +418,7 @@ function readToken_(t) {
   });
 
   // ======= admin: courses / modules / lessons =======
-  const courseBody = (b, s) => { const type = U.oneOf(b.type || 'FREE', ['FREE', 'PAID'], 'Course type'); return { title: U.str(b.title, { name: 'Course title', max: 200, required: true }), category: U.str(b.category, { name: 'Category', max: 80 }) || 'Islamic Studies', type, price: type === 'PAID' ? U.num(b.price, { name: 'Price', min: 1, max: 1e9 }) : 0, currency: U.oneOf(String(b.currency || s.defaultCurrency || 'NGN').toUpperCase(), CURRENCIES, 'Currency'), discount_pct: type === 'PAID' ? U.num(b.discountPct, { name: 'Discount', min: 0, max: 100, def: 0 }) : 0, instructor: U.str(b.instructor, { name: 'Instructor', max: 120 }) || s.founderName, description: U.str(b.description, { name: 'Description', max: 6000 }), image: U.str(b.image, { max: 2000000, name: 'Cover image' }), published: U.bool(b.published) ? 1 : 0 }; };
+  const courseBody = (b, s) => { const type = U.oneOf(b.type || 'FREE', ['FREE', 'PAID'], 'Course type'); return { title: U.str(b.title, { name: 'Course title', max: 200, required: true }), title_ar: U.str(b.titleAr, { max: 200 }), category: U.str(b.category, { name: 'Category', max: 80 }) || 'Islamic Studies', type, price: type === 'PAID' ? U.num(b.price, { name: 'Price', min: 1, max: 1e9 }) : 0, currency: U.oneOf(String(b.currency || s.defaultCurrency || 'NGN').toUpperCase(), CURRENCIES, 'Currency'), discount_pct: type === 'PAID' ? U.num(b.discountPct, { name: 'Discount', min: 0, max: 100, def: 0 }) : 0, instructor: U.str(b.instructor, { name: 'Instructor', max: 120 }) || s.founderName, description: U.str(b.description, { name: 'Description', max: 6000 }), image: U.str(b.image, { max: 2000000, name: 'Cover image' }), published: U.bool(b.published) ? 1 : 0 }; };
   const touch = (id) => { const c = find('courses', (x) => x.id === id); if (c) c.updated_at = now(); };
   R('GET', '/api/admin/courses', 'staff', () => ({ courses: db.courses.slice().sort((a, b) => b.id - a.id).map((c) => ({ ...c, modules: filt('modules', (m) => m.course_id === c.id).length, lessons: filt('lessons', (l) => l.course_id === c.id).length, exams: filt('exams', (e) => e.course_id === c.id).length, students: filt('enrollments', (e) => e.course_id === c.id).length, finalPrice: U.finalPrice(c) })) }));
   R('GET', '/api/admin/courses/:id', 'staff', (c) => {
@@ -561,7 +562,7 @@ function readToken_(t) {
     if (b.maintenance) setSetting('maintenance', { on: U.bool(b.maintenance.on), message: U.str(b.maintenance.message, { max: 500 }) });
     if (b.bank) setSetting('bank', { provider: U.str(b.bank.provider, { max: 80 }), accountNumber: U.str(b.bank.accountNumber, { max: 40 }), accountName: U.str(b.bank.accountName, { max: 120 }), international: U.str(b.bank.international, { max: 600 }) });
     if (b.donation) setSetting('donation', { title: U.str(b.donation.title, { max: 120 }), message: U.str(b.donation.message, { max: 1500 }), presets: (Array.isArray(b.donation.presets) ? b.donation.presets : cur.donation.presets).map(Number).filter((n) => n > 0 && n < 1e9).slice(0, 8) });
-    if (b.cert) setSetting('cert', { ...cur.cert, signatoryName: U.str(b.cert.signatoryName, { max: 120 }), signatoryTitle: U.str(b.cert.signatoryTitle, { max: 160 }), language: U.oneOf(b.cert.language || 'English', ['English', 'Arabic', 'Hausa'], 'Certificate language'), autoIssue: U.bool(b.cert.autoIssue) });
+    if (b.cert) setSetting('cert', { ...cur.cert, signatoryName: U.str(b.cert.signatoryName, { max: 120 }), signatoryTitle: U.str(b.cert.signatoryTitle, { max: 160 }), language: U.oneOf(b.cert.language || cur.cert.language || 'English', ['English', 'Arabic', 'Hausa'], 'Certificate language'), autoIssue: U.bool(b.cert.autoIssue), signatoryTitleAr: b.cert.signatoryTitleAr === undefined ? (cur.cert.signatoryTitleAr || '') : U.str(b.cert.signatoryTitleAr, { max: 160 }), tagline: b.cert.tagline === undefined ? (cur.cert.tagline || '') : U.str(b.cert.tagline, { max: 120 }), stampText: b.cert.stampText === undefined ? (cur.cert.stampText || '') : U.str(b.cert.stampText, { max: 40 }), partners: b.cert.partners === undefined ? (cur.cert.partners || []) : (Array.isArray(b.cert.partners) ? b.cert.partners.slice(0, 4) : []).filter((p) => p && p.logo).map((p) => ({ logo: mediaUrl_(p.logo, 'Partner logo'), label: U.str(p.label, { max: 40 }) })) });
     if (Array.isArray(b.categories)) setSetting('categories', b.categories.map((x) => U.str(x, { max: 80 })).filter(Boolean).slice(0, 30));
     return { ok: true };
   });
