@@ -164,7 +164,7 @@ function readToken_(t) {
   function publicSettings(s) {
     return {
       siteName: s.siteName, siteNameAr: s.siteNameAr, tagline: s.tagline, taglineAr: s.taglineAr, logo: s.logo, seal: s.seal, signature: s.signature,
-      founder: { name: s.founderName, title: s.founderTitle, bio: s.founderBio, photo: s.founderPhoto },
+      founder: { name: s.founderName, title: s.founderTitle, bio: s.founderBio, photo: s.founderPhoto }, story: s.story || '', teachers: Array.isArray(s.teachers) ? s.teachers : [],
       email: s.email, phone: s.phone, whatsapp: s.whatsapp, social: s.social, announcement: s.announcement, maintenance: s.maintenance,
       defaultVideoUrl: s.defaultVideoUrl, defaultCurrency: s.defaultCurrency, bank: s.bank, donation: s.donation, categories: s.categories,
       cert: { signatoryName: s.cert.signatoryName, signatoryTitle: s.cert.signatoryTitle, signatoryTitleAr: s.cert.signatoryTitleAr || '', tagline: s.cert.tagline || '', stampText: s.cert.stampText || '', partners: s.cert.partners || [], language: s.cert.language, extraLogos: s.cert.extraLogos },
@@ -562,6 +562,8 @@ function readToken_(t) {
     if (b.bank) setSetting('bank', { provider: U.str(b.bank.provider, { max: 80 }), accountNumber: U.str(b.bank.accountNumber, { max: 40 }), accountName: U.str(b.bank.accountName, { max: 120 }), international: U.str(b.bank.international, { max: 600 }) });
     if (b.donation) setSetting('donation', { title: U.str(b.donation.title, { max: 120 }), message: U.str(b.donation.message, { max: 1500 }), presets: (Array.isArray(b.donation.presets) ? b.donation.presets : cur.donation.presets).map(Number).filter((n) => n > 0 && n < 1e9).slice(0, 8) });
     if (b.cert) setSetting('cert', { ...cur.cert, signatoryName: U.str(b.cert.signatoryName, { max: 120 }), signatoryTitle: U.str(b.cert.signatoryTitle, { max: 160 }), language: U.oneOf(b.cert.language || cur.cert.language || 'English', ['English', 'Arabic', 'Hausa'], 'Certificate language'), autoIssue: U.bool(b.cert.autoIssue), signatoryTitleAr: b.cert.signatoryTitleAr === undefined ? (cur.cert.signatoryTitleAr || '') : U.str(b.cert.signatoryTitleAr, { max: 160 }), tagline: b.cert.tagline === undefined ? (cur.cert.tagline || '') : U.str(b.cert.tagline, { max: 120 }), stampText: b.cert.stampText === undefined ? (cur.cert.stampText || '') : U.str(b.cert.stampText, { max: 40 }), partners: b.cert.partners === undefined ? (cur.cert.partners || []) : (Array.isArray(b.cert.partners) ? b.cert.partners.slice(0, 4) : []).filter((p) => p && p.logo).map((p) => ({ logo: mediaUrl_(p.logo, 'Partner logo'), label: U.str(p.label, { max: 40 }) })) });
+    if (b.story !== undefined) setSetting('story', U.str(b.story, { max: 4000 }));
+    if (Array.isArray(b.teachers)) setSetting('teachers', b.teachers.slice(0, 30).map((x) => ({ name: U.str(x && x.name, { max: 120 }), title: U.str(x && x.title, { max: 160 }), bio: U.str(x && x.bio, { max: 800 }), photo: String((x && x.photo) || '').slice(0, 300) })).filter((x) => x.name));
     if (Array.isArray(b.categories)) setSetting('categories', b.categories.map((x) => U.str(x, { max: 80 })).filter(Boolean).slice(0, 30));
     return { ok: true };
   });
