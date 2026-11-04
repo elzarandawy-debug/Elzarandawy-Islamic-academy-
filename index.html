@@ -579,6 +579,40 @@ window.ICONS={"house":["0 0 512 512","M277.8 8.6c-12.3-11.4-31.3-11.4-43.5 0l-22
       document.documentElement.lang = l; document.documentElement.dir = LANGS[l].dir;
     },
   };
+  // ---- Stage 2C extra texts ----
+  const X = {
+    en: {
+      'hero.lead': 'Free Islamic education from your phone. Study the Quran, Arabic and Islamic knowledge at your own pace, take exams, and receive your certificate instantly.',
+      'hero.cta1': 'Start studying', 'hero.cta2': 'How it works', 'hero.continue': 'Continue where you left off',
+      'f1.t': 'Free to start', 'f1.d': 'Create your account and join free courses at no cost.',
+      'f2.t': 'Study any time', 'f2.d': 'Learn on your phone, at any hour, at your own pace.',
+      'f3.t': 'Real exams', 'f3.d': 'Timed exams with a 50% pass mark. Retake when you need to.',
+      'f4.t': 'Instant certificate', 'f4.d': 'Pass and your Certificate of Completion is ready at once, verifiable online.',
+      'foot.how': 'How to study', 'foot.sample': 'Certificate sample',
+    },
+    ha: {
+      'hero.lead': 'Karatun Addini kyauta daga wayarka. Yi karatun Alƙur’ani, Larabci da ilimin Musulunci yadda ka ga dama, ka rubuta jarrabawa, ka karɓi takardar shaidarka nan take.',
+      'hero.cta1': 'Fara karatu', 'hero.cta2': 'Yadda yake aiki', 'hero.continue': 'Ci gaba daga inda ka tsaya',
+      'f1.t': 'Farawa kyauta', 'f1.d': 'Buɗe asusu ka shiga kwasa-kwasai na kyauta babu kuɗi.',
+      'f2.t': 'Karatu a kowane lokaci', 'f2.d': 'Yi karatu a wayarka, a kowace sa’a, yadda kake so.',
+      'f3.t': 'Jarrabawa ta gaske', 'f3.d': 'Jarrabawa mai lokaci, ana ci da 50%. Za ka iya sake rubutawa idan ya kama.',
+      'f4.t': 'Takardar shaida nan take', 'f4.d': 'Ka ci jarrabawa, takardar shaidarka (Certificate of Completion) ta shirya nan take, ana iya tabbatar da ita a intanet.',
+      'foot.how': 'Yadda ake karatu', 'foot.sample': 'Misalin takardar shaida',
+    },
+    ar: {
+      'hero.lead': 'تعليم إسلامي مجاني من هاتفك. ادرس القرآن واللغة العربية والعلوم الإسلامية بالسرعة التي تناسبك، وأدِّ الاختبارات، واحصل على شهادتك فورًا.',
+      'hero.cta1': 'ابدأ الدراسة', 'hero.cta2': 'كيف تعمل الأكاديمية', 'hero.continue': 'تابع من حيث توقفت',
+      'f1.t': 'ابدأ مجانًا', 'f1.d': 'أنشئ حسابك وانضم إلى الدورات المجانية دون أي رسوم.',
+      'f2.t': 'ادرس في أي وقت', 'f2.d': 'تعلّم من هاتفك في أي ساعة وبالوتيرة التي تناسبك.',
+      'f3.t': 'اختبارات حقيقية', 'f3.d': 'اختبارات بوقت محدد ودرجة نجاح 50%. يمكنك الإعادة عند الحاجة.',
+      'f4.t': 'شهادة فورية', 'f4.d': 'انجح لتصبح شهادة إتمام الدورة جاهزة فورًا، ويمكن التحقق منها عبر الإنترنت.',
+      'foot.how': 'كيف تدرس', 'foot.sample': 'نموذج الشهادة',
+    },
+  };
+  for (const k of Object.keys(X)) Object.assign(D[k], X[k]);
+  window.EZA_SAVE = (id, lesson, title) => { try { localStorage.setItem('eza_last_v1', JSON.stringify({ id, lesson, title, at: Date.now() })); } catch (_) {} };
+  window.EZA_LAST = (id) => { try { const o = JSON.parse(localStorage.getItem('eza_last_v1') || 'null'); return o && String(o.id) === String(id) ? Number(o.lesson) : 0; } catch (_) { return 0; } };
+  window.EZA_LASTCOURSE = () => { try { return JSON.parse(localStorage.getItem('eza_last_v1') || 'null'); } catch (_) { return null; } };
   window.t = (k) => (D[lang] && D[lang][k]) || D.en[k] || k;
   document.documentElement.lang = lang; document.documentElement.dir = LANGS[lang].dir;
 })();
@@ -922,11 +956,13 @@ window.ICONS={"house":["0 0 512 512","M277.8 8.6c-12.3-11.4-31.3-11.4-43.5 0l-22
         <div><span class="eyebrow">${icon('star')} ${t('hero.eyebrow')}</span>
           <h1>${t('hero.title1')} <em>${t('hero.title2')}</em></h1>
           <p class="lead">${t('hero.lead')}</p>
-          <div class="row"><a class="btn btn-gold btn-lg" href="/courses">${icon('graduation-cap')} ${t('hero.explore')}</a>${App.user ? '' : html`<a class="btn btn-ghost on-dark btn-lg" href="/register">${icon('user-plus')} ${t('hero.register')}</a>`}<a class="btn btn-ghost on-dark btn-lg" href="/donate">${icon('hand-holding-heart')} ${t('hero.donate')}</a></div>
+          <div class="row"><a class="btn btn-gold btn-lg" href="${App.user ? '/courses' : '/register'}">${icon('graduation-cap')} ${t('hero.cta1')}</a><a class="btn btn-ghost on-dark btn-lg" href="/how-to-study">${icon('circle-question')} ${t('hero.cta2')}</a></div>
           <div class="stats"><div><b>${st.courses}</b><span>${t('stats.courses')}</span></div><div><b>${st.lessons}</b><span>${t('stats.lessons')}</span></div>${st.certificates >= 1 ? html`<div><b>${st.certificates}</b><span>${t('stats.certs')}</span></div>` : ''}</div>
         </div>
         <div class="hero-art"><img class="crest" src="${s.logo}" alt="${s.siteName}"></div>
       </div></section>
+      ${(() => { const lc = App.user ? EZA_LASTCOURSE() : null; return lc && lc.id ? html`<div class="container" style="margin-top:22px"><a class="card card-body" href="/learn/${lc.id}" style="display:flex;gap:12px;align-items:center;text-decoration:none"><span style="color:var(--gold)">${icon('play')}</span><span style="flex:1"><b>${t('hero.continue')}</b><br><span class="sm muted">${lc.title || ''}</span></span>${icon('arrow-right', 'flip')}</a></div>` : ''; })()}
+      <section class="section" style="padding-bottom:0"><div class="container"><div class="grid g4">${[['gift', 'f1'], ['clock', 'f2'], ['clipboard-list', 'f3'], ['award', 'f4']].map(([ic, k]) => html`<div class="card card-body center"><div style="color:var(--gold);font-size:1.6rem">${icon(ic)}</div><h3 style="margin:8px 0 4px">${t(k + '.t')}</h3><p class="sm muted" style="margin:0">${t(k + '.d')}</p></div>`)}</div></div></section>
       <section class="section"><div class="container">
         <div class="sec-head"><div><span class="kicker">${t('home.featuredKicker')}</span><h2 style="margin:0">${t('home.featured')}</h2></div><a class="btn btn-ghost" href="/courses">${t('home.viewAll')} ${icon('arrow-right', 'flip')}</a></div>
         ${!App.user ? html`<div class="card card-body center"><p class="muted" style="margin-top:0">Register free (or sign in) to see our courses and start learning.</p><div class="row" style="justify-content:center"><a class="btn btn-gold" href="/register">${icon('user-plus')} ${t('auth.register')}</a><a class="btn btn-ghost" href="/login">${icon('right-to-bracket')} ${t('auth.login')}</a></div></div>` : courses.length ? html`<div class="grid g3">${courses.slice(0, 6).map(courseCard)}</div>` : html`<div class="card card-body center muted">New courses are being prepared — please check back soon.</div>`}
@@ -988,7 +1024,7 @@ window.ICONS={"house":["0 0 512 512","M277.8 8.6c-12.3-11.4-31.3-11.4-43.5 0l-22
   }
   route('/courses/:id', coursePage);
   App.actions['enroll-free'] = async (el) => { await api.post(`/api/courses/${el.dataset.id}/enroll`); toast('You have joined this course'); go('/learn/' + el.dataset.id); };
-  App.actions['pay-online'] = async (el) => { const r = await api.post(`/api/courses/${el.dataset.id}/pay/paystack`); if (r.already) { go('/learn/' + el.dataset.id); return; } window.location.href = r.url; };
+  App.actions['pay-online'] = async (el) => { const ov = document.createElement('div'); ov.style.cssText = 'position:fixed;inset:0;z-index:99999;background:#06382a;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;text-align:center;padding:20px'; ov.innerHTML = '<img src="' + esc(S().logo) + '" alt="" style="width:96px;height:96px;object-fit:contain"><b style="font-size:1.15rem">' + esc(S().siteName) + '</b><span class="spin"></span><span>Redirecting to secure payment…</span>'; document.body.appendChild(ov); try { const r = await api.post(`/api/courses/${el.dataset.id}/pay/paystack`); if (r.already) { ov.remove(); go('/learn/' + el.dataset.id); return; } window.location.href = r.url; } catch (e) { ov.remove(); fail(e); } };
   App.actions.checkout = async (el) => {
     const { course: c } = await api.get('/api/public/courses/' + el.dataset.id);
     openModal('Pay by bank transfer', html`
@@ -1011,9 +1047,50 @@ window.ICONS={"house":["0 0 512 512","M277.8 8.6c-12.3-11.4-31.3-11.4-43.5 0l-22
   route('/about', async () => {
     const s = S();
     return { title: t('nav.about'), html: html`<div class="page-head"><div class="container"><h1>${t('nav.about')}</h1><p>${s.siteName}</p></div></div>
-      <div class="container section">${founderBlock(true)}
+      <div class="container section">${founderBlock(true)}${storyBlock()}${teachersBlock()}
       <div class="grid g3" style="margin-top:56px">${[['book-quran', 'Authentic knowledge', 'Courses in Quran, Tajweed, Arabic and Islamic studies taught in a clear, structured way.'], ['clipboard-list', 'Real assessment', 'Timed examinations with a pass mark, so every certificate reflects genuine achievement.'], ['qrcode', 'Verifiable certificates', 'Each certificate carries a unique number and QR code anyone can verify online.']].map(([ic, h, p]) => html`<div class="card card-body center"><div style="font-size:2rem;color:var(--gold)">${icon(ic)}</div><h3>${h}</h3><p class="sm muted" style="margin:0">${p}</p></div>`)}</div></div>` };
   });
+
+  // ---------- STAGE 2C: HOW TO STUDY, CERTIFICATE SAMPLE ----------
+  const HOW = {
+    en: { h: 'How to study', p: 'Six simple steps from registration to your certificate.', tipsH: 'Helpful tips',
+      steps: [['Create your free account', 'Press Register, fill in your name, email and a password. You receive your permanent student number (EIA-year-number).'], ['Choose a course and join', 'Open Courses, pick a course and press “Join course”. Free courses open at once; paid courses open after payment.'], ['Study the lessons', 'Open each lesson: watch the video, listen to the audio, read the notes and download the documents. Press “Mark as completed” when you finish.'], ['Take the exam', 'When you finish the lessons, start the timed exam. You need 50% or more to pass, and you may retake it if you do not.'], ['Receive your certificate', 'If you pass, your Certificate of Completion is ready immediately. You can view it, print it or save it as PDF.'], ['Share and verify', 'Anyone can check your certificate on the Verify page using the certificate number or by scanning the QR code on it.']],
+      tips: ['Audio lessons use very little data — good for slow networks.', 'Study a little every day rather than a lot once a week.', 'Your progress is saved. Open the course again and continue where you stopped.', 'Revise the notes before the exam.'] },
+    ha: { h: 'Yadda ake karatu', p: 'Matakai shida masu sauƙi daga rajista zuwa takardar shaida.', tipsH: 'Shawarwari masu amfani',
+      steps: [['Buɗe asusunka kyauta', 'Danna Register, ka cika sunanka, imel da kalmar sirri. Za ka sami lambar ɗalibi ta dindindin (EIA-shekara-lamba).'], ['Zaɓi kwas ka shiga', 'Buɗe Courses, ka zaɓi kwas ka danna “Join course”. Kwas na kyauta yana buɗewa nan take; na kuɗi kuma bayan biya.'], ['Yi karatun darussan', 'Buɗe kowane darasi: kalli bidiyo, saurari murya, karanta bayanai ka sauke takardu. Idan ka gama ka danna “Mark as completed”.'], ['Rubuta jarrabawa', 'Idan ka gama darussan, fara jarrabawa mai lokaci. Ana ci da 50% ko fiye, kuma za ka iya sake rubutawa idan ba ka ci ba.'], ['Karɓi takardar shaidarka', 'Idan ka ci, takardar shaidarka (Certificate of Completion) ta shirya nan take. Za ka iya duba ta, buga ta ko adana ta a matsayin PDF.'], ['Raba ka tabbatar', 'Kowa na iya tabbatar da takardar shaidarka a shafin Verify da lambarta ko ta duba QR code ɗin da ke jiki.']],
+      tips: ['Darussan murya ba sa cin data sosai, sun dace da hanyar sadarwa mai rauni.', 'Yi karatu kaɗan kowace rana, maimakon yawa sau ɗaya a mako.', 'Ana adana ci gabanka. Ka sake buɗe kwas ɗin ka ci gaba daga inda ka tsaya.', 'Ka sake karanta bayanai kafin jarrabawa.'] },
+    ar: { h: 'كيف تدرس', p: 'ست خطوات بسيطة من التسجيل حتى الشهادة.', tipsH: 'نصائح مفيدة',
+      steps: [['أنشئ حسابك المجاني', 'اضغط «تسجيل» وأدخل اسمك وبريدك وكلمة المرور. ستحصل على رقم طالب دائم (EIA-السنة-الرقم).'], ['اختر دورة وانضم', 'افتح «الدورات» واختر دورة واضغط «انضمام». الدورات المجانية تُفتح فورًا، والمدفوعة بعد الدفع.'], ['ادرس الدروس', 'افتح كل درس: شاهد الفيديو واستمع إلى الصوت واقرأ الملاحظات وحمّل الملفات. اضغط «تم الإكمال» عند الانتهاء.'], ['أدِّ الاختبار', 'بعد إنهاء الدروس ابدأ الاختبار المحدد بوقت. تحتاج إلى 50% أو أكثر للنجاح، ويمكنك الإعادة إن لم تنجح.'], ['احصل على شهادتك', 'عند النجاح تصبح شهادة إتمام الدورة جاهزة فورًا. يمكنك عرضها وطباعتها أو حفظها بصيغة PDF.'], ['شارك وتحقّق', 'يمكن لأي شخص التحقق من شهادتك في صفحة التحقق برقم الشهادة أو بمسح رمز QR عليها.']],
+      tips: ['الدروس الصوتية تستهلك بيانات قليلة جدًا، مناسبة للشبكات الضعيفة.', 'ادرس قليلًا كل يوم بدل الكثير مرة في الأسبوع.', 'يُحفظ تقدمك. افتح الدورة مجددًا وتابع من حيث توقفت.', 'راجع الملاحظات قبل الاختبار.'] },
+  };
+  route('/how-to-study', async () => {
+    const H = HOW[I18N.lang] || HOW.en;
+    return { title: H.h, html: html`<div class="page-head"><div class="container"><h1>${H.h}</h1><p>${H.p}</p></div></div>
+      <div class="container narrow section"><div class="stack">
+        ${H.steps.map((s, i) => html`<div class="card card-body" style="display:flex;gap:14px;align-items:flex-start"><div style="flex:none;width:38px;height:38px;border-radius:50%;background:var(--gold);color:#06382a;display:grid;place-items:center;font-weight:700">${i + 1}</div><div><h3 style="margin:0 0 4px">${s[0]}</h3><p class="muted" style="margin:0">${s[1]}</p></div></div>`)}
+        <div class="card card-body"><h3 style="margin-top:0">${icon('lightbulb')} ${H.tipsH}</h3><ul style="margin:0;padding-inline-start:20px">${H.tips.map((x) => html`<li style="margin:6px 0">${x}</li>`)}</ul></div>
+        <div class="row" style="justify-content:center"><a class="btn btn-gold btn-lg" href="${App.user ? '/courses' : '/register'}">${icon('graduation-cap')} ${t('hero.cta1')}</a><a class="btn btn-ghost btn-lg" href="/certificate-sample">${icon('award')} ${t('foot.sample')}</a></div>
+      </div></div>` };
+  });
+  route('/certificate-sample', async () => {
+    const s = S(); const y = new Date().getFullYear();
+    const sample = { certNo: 'CERT-' + y + '-000000', studentName: 'Sample Student Name', regNumber: 'EIA-' + y + '-000000', courseTitle: 'Sample Course Title', courseTitleAr: '', issuedAt: new Date().toISOString(), finalPercent: 90, grade: 'Distinction' };
+    const brand = { siteName: s.siteName, siteNameAr: s.siteNameAr, logo: s.logo, seal: s.seal, signature: s.signature, cert: s.cert, tagline: s.tagline, taglineAr: s.taglineAr, email: s.email, phone: s.phone, whatsapp: s.whatsapp, social: s.social };
+    return { title: t('foot.sample'), html: html`<div class="page-head"><div class="container"><h1>${t('foot.sample')}</h1><p>Certificate of Completion — sample only, not a real certificate.</p></div></div>
+      <div class="container section"><div id="cs-holder">${Cert.stage(Cert.render(sample, brand, { baseUrl: location.origin }))}</div>
+      <div class="card card-body" style="max-width:760px;margin:26px auto 0"><h3 style="margin-top:0">${icon('shield-halved')} How to verify a certificate</h3>
+        <ol style="margin:0;padding-inline-start:20px"><li style="margin:6px 0">Find the certificate number (CERT-year-number) at the bottom of the certificate.</li><li style="margin:6px 0">Open the <a href="/verify">Verify</a> page and type the number — or scan the QR code on the certificate with a phone camera.</li><li style="margin:6px 0">The page shows the student name, course and date if the certificate is genuine.</li></ol>
+        <div class="row" style="margin-top:14px"><a class="btn" href="/verify">${icon('award')} ${t('nav.verify')}</a><a class="btn btn-ghost" href="/how-to-study">${t('foot.how')}</a></div></div></div>`, mount: () => { const h = document.getElementById('cs-holder'); if (h) Cert.fit(h); } };
+  });
+  const teachersBlock = () => {
+    const T = S().teachers || []; if (!T.length) return '';
+    return html`<div style="margin-top:56px"><div class="center" style="margin-bottom:22px"><span class="kicker">Our teachers</span><h2>Meet the teachers</h2></div>
+      <div class="grid g3">${T.map((x) => html`<div class="card card-body center">${x.photo ? html`<img src="${x.photo}" alt="${x.name}" loading="lazy" style="width:110px;height:110px;border-radius:50%;object-fit:cover;margin:0 auto 12px;display:block">` : html`<div style="width:110px;height:110px;border-radius:50%;background:var(--gold);color:#06382a;display:grid;place-items:center;font-size:2rem;font-weight:700;margin:0 auto 12px">${initials(x.name)}</div>`}<h3 style="margin:0">${x.name}</h3>${x.title ? html`<p class="bold" style="color:var(--gold);margin:4px 0">${x.title}</p>` : ''}${x.bio ? html`<p class="sm muted" style="margin:6px 0 0">${x.bio}</p>` : ''}</div>`)}</div></div>`;
+  };
+  const storyBlock = () => {
+    const s = S(); const txt = s.story || ('Elzarandawy Islamic Academy was established to make authentic Islamic knowledge, Quranic studies and the Arabic language accessible to sincere students everywhere, in a structured and affordable way.');
+    return html`<div style="margin-top:56px;max-width:780px;margin-inline:auto"><div class="center" style="margin-bottom:14px"><span class="kicker">Our story</span><h2>About the academy</h2></div><div class="prose">${txt.split(/\n+/).map((p) => html`<p>${p}</p>`)}</div></div>`;
+  };
 
   // ---------- DONATE ----------
   App.ons['don-preset'] = () => {};
@@ -1197,11 +1274,11 @@ window.ICONS={"house":["0 0 512 512","M277.8 8.6c-12.3-11.4-31.3-11.4-43.5 0l-22
     if (!App.user) return { redirect: '/login?next=' + encodeURIComponent('/learn/' + id) };
     const data = await api.get(`/api/courses/${id}/learn`);
     const all = data.modules.flatMap((m) => m.lessons);
-    const want = Number(q.lesson); const firstOpen = all.find((l) => !l.completed) || all[0];
-    L = { data, lessonId: (all.find((l) => l.id === want) || firstOpen || {}).id, courseId: id };
+    const want = Number(q.lesson) || EZA_LAST(id); const firstOpen = all.find((l) => !l.completed) || all[0];
+    L = { data, lessonId: (all.find((l) => l.id === want) || firstOpen || {}).id, courseId: id }; EZA_SAVE(id, L.lessonId, data.course.title);
     return { title: data.course.title, html: html`<div class="learn"><div class="container" id="learn-root"></div></div>`, mount: paintLearn };
   });
-  App.actions['pick-lesson'] = (el) => { L.lessonId = Number(el.dataset.id); VLOC.replace(`/learn/${L.courseId}?lesson=${L.lessonId}`); paintLearn(); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+  App.actions['pick-lesson'] = (el) => { L.lessonId = Number(el.dataset.id); EZA_SAVE(L.courseId, L.lessonId, L.data.course.title); VLOC.replace(`/learn/${L.courseId}?lesson=${L.lessonId}`); paintLearn(); window.scrollTo({ top: 0, behavior: 'smooth' }); };
   App.actions['next-lesson'] = App.actions['pick-lesson'];
   App.actions['toggle-complete'] = async () => {
     const les = lessonEl(); const r = await api.post(`/api/lessons/${les.id}/complete`, { completed: !les.completed });
@@ -1611,6 +1688,18 @@ window.ICONS={"house":["0 0 512 512","M277.8 8.6c-12.3-11.4-31.3-11.4-43.5 0l-22
     box.innerHTML = toHtml(PL.length ? PL.map((p, i) => html`<div class="upload-slot" data-i="${i}"><img src="${p.logo}" alt="" style="width:64px;height:64px;object-fit:contain"><div style="flex:1;min-width:180px"><label class="field" style="margin:0"><span>Label under the logo</span><input data-pl="label" list="pl-labels" value="${p.label}" maxlength="40" placeholder="Accreditation, Membership, Affiliate, Partner…"></label></div><label class="btn btn-sm btn-ghost" style="cursor:pointer">${icon('upload')} Change<input type="file" accept="image/*" hidden data-on="pl-file" data-i="${i}"></label><button type="button" class="btn btn-sm btn-ghost" data-act="pl-del" data-i="${i}">${icon('trash')}</button></div>`) : html`<div class="muted sm">No partner logos yet. Only the academy logo is shown.</div>`);
     if (!box.dataset.bound) { box.dataset.bound = '1'; box.addEventListener('input', (e) => { const el = e.target; if (el.dataset.pl) { const i = Number(el.closest('[data-i]').dataset.i); if (PL[i]) PL[i][el.dataset.pl] = el.value; } }); }
   };
+  // ---------- STAGE 2C: story + teachers manager ----------
+  let TM = [];
+  const paintTM = () => {
+    const box = document.getElementById('tm-box'); if (!box) return;
+    box.innerHTML = toHtml(TM.length ? TM.map((x, i) => html`<div class="mi" data-i="${i}"><div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:8px">${x.photo ? html`<img src="${x.photo}" alt="" style="width:64px;height:64px;border-radius:50%;object-fit:cover">` : html`<div class="muted xs" style="width:64px">no photo</div>`}<label class="btn btn-sm btn-ghost" style="cursor:pointer">${icon('upload')} Photo<input type="file" accept="image/*" hidden data-on="tm-photo" data-i="${i}"></label><button type="button" class="btn btn-sm btn-ghost" data-act="tm-del" data-i="${i}">${icon('trash')} Remove</button></div>
+      <label class="field"><span>Name</span><input data-tm="name" value="${x.name}" maxlength="120"></label><label class="field"><span>Title (e.g. Teacher of Tajweed)</span><input data-tm="title" value="${x.title}" maxlength="160"></label><label class="field"><span>Short biography</span><textarea data-tm="bio" rows="3" maxlength="800">${x.bio}</textarea></label></div>`) : html`<div class="muted sm">No teachers yet. The Teachers section stays hidden on the About page until you add one.</div>`);
+    if (!box.dataset.bound) { box.dataset.bound = '1'; box.addEventListener('input', (e) => { const el = e.target; if (el.dataset.tm) { const i = Number(el.closest('[data-i]').dataset.i); if (TM[i]) TM[i][el.dataset.tm] = el.value; } }); }
+  };
+  App.actions['tm-add'] = () => { if (TM.length >= 30) return toast('Up to 30 teachers'); TM.push({ name: '', title: '', bio: '', photo: '' }); paintTM(); };
+  App.actions['tm-del'] = (el) => { TM.splice(Number(el.dataset.i), 1); paintTM(); };
+  App.ons['tm-photo'] = async (el) => { const f = el.files[0]; if (!f) return; try { const r = await plUpload(f); TM[Number(el.dataset.i)].photo = r.url; paintTM(); } catch (e) { fail(e); } el.value = ''; };
+  App.forms['set-teachers'] = (f) => saveSettings({ story: f.story.value, teachers: TM.filter((x) => (x.name || '').trim()) }, 'About page saved');
   const plUpload = async (f) => { if (f.size > 3800000) throw new Error('Image is too large (max 3.8 MB)'); const fd = new FormData(); fd.append('file', f); return api.post('/api/admin/upload-media', fd); };
   App.actions['pl-add'] = () => { const inp = document.createElement('input'); inp.type = 'file'; inp.accept = 'image/*'; inp.onchange = async () => { const f = inp.files[0]; if (!f) return; try { if (PL.length >= 4) throw new Error('Up to 4 partner logos'); const r = await plUpload(f); PL.push({ logo: r.url, label: '' }); paintPL(); } catch (e) { fail(e); } }; inp.click(); };
   App.actions['pl-del'] = (el) => { PL.splice(Number(el.dataset.i), 1); paintPL(); };
@@ -1618,13 +1707,14 @@ window.ICONS={"house":["0 0 512 512","M277.8 8.6c-12.3-11.4-31.3-11.4-43.5 0l-22
   TAB_FN.settings = async () => {
     const { settings: s, paystack } = await api.get('/api/admin/settings');
     const cur = { logo: s.logo, seal: s.seal, signature: s.signature, founderPhoto: s.founderPhoto, certLogo0: s.cert.extraLogos[0], certLogo1: s.cert.extraLogos[1], certLogo2: s.cert.extraLogos[2] };
-    window._settings = s; PL = (s.cert.partners || []).map((p) => ({ logo: p.logo, label: p.label || '' })); setTimeout(paintPL, 60);
+    window._settings = s; PL = (s.cert.partners || []).map((p) => ({ logo: p.logo, label: p.label || '' })); setTimeout(paintPL, 60); TM = (s.teachers || []).map((x) => ({ name: x.name || '', title: x.title || '', bio: x.bio || '', photo: x.photo || '' })); setTimeout(paintTM, 70);
     setTimeout(async () => { try { const b = await api.get('/api/admin/backup'); const el = document.getElementById('backup-status'); if (el) el.innerHTML = toHtml(html`Last backup: <b>${b.last ? dateTime(b.last.at) + ' · ' + Math.round(b.last.size / 1024) + ' KB' : 'none yet'}</b> · Telegram: <b>${b.telegram ? (b.last && b.last.error ? 'ERROR — ' + b.last.error : b.last && b.last.sent ? 'sent ✓' : 'configured') : 'not configured'}</b>`); } catch (_) {} }, 50);
     return html`<div class="stack">
       <div class="card card-body"><h3>${icon('image')} Logo, seal, signature &amp; photos</h3><p class="sm muted">Change them whenever you like — the website and all certificates update instantly. PNG, JPG, WEBP or GIF up to 3MB.</p>
         ${SLOT_META.map(([k, l, h]) => html`<div class="upload-slot">${cur[k] ? html`<img src="${cur[k]}" alt="">` : html`<div class="muted xs" style="width:90px">none</div>`}<div style="flex:1;min-width:200px"><b class="sm">${l}</b><div class="xs muted">${h}</div></div><label class="btn btn-sm">${icon('upload')} ${cur[k] ? 'Change' : 'Upload'}<input type="file" accept="image/*" hidden data-on="slot-upload" data-slot="${k}"></label>${cur[k] ? html`<button class="btn btn-sm btn-ghost" data-act="slot-reset" data-slot="${k}">Remove / reset</button>` : ''}</div>`)}</div>
       <form class="card card-body" data-form="set-general"><h3>${icon('building-columns')} Academy &amp; contact</h3><div class="fgrid">${fld('Academy name (English)', 'siteName', s.siteName)}${fld('Academy name (Arabic)', 'siteNameAr', s.siteNameAr)}${fld('Tagline', 'tagline', s.tagline)}${fld('Tagline (Arabic)', 'taglineAr', s.taglineAr)}${fld('Email', 'email', s.email, 'type=email')}${fld('Phone (display)', 'phone', s.phone)}${fld('WhatsApp number (digits only, with country code)', 'whatsapp', s.whatsapp)}${fld('Default lesson video link', 'defaultVideoUrl', s.defaultVideoUrl, 'type=url', 'Shown for lessons that have no video of their own.')}</div>${fld('Announcement bar (leave empty to hide)', 'announcement', s.announcement)}<button class="btn" type="submit">Save</button></form>
       <form class="card card-body" data-form="set-founder"><h3>${icon('user')} Founder</h3><div class="fgrid">${fld('Name', 'founderName', s.founderName)}${fld('Title', 'founderTitle', s.founderTitle)}</div>${area('Biography', 'founderBio', s.founderBio, 5)}<button class="btn" type="submit">Save</button></form>
+      <form class="card card-body" data-form="set-teachers"><h3>${icon('chalkboard-user')} About page: story &amp; teachers</h3>${area('Academy story (shown on the About page)', 'story', s.story || '', 5)}<h4 style="margin:14px 0 4px">Teachers</h4><p class="help">Add each teacher with a photo, name, title and short biography.</p><div id="tm-box"></div><div class="row" style="margin:8px 0 14px"><button type="button" class="btn btn-sm btn-ghost" data-act="tm-add">${icon('plus')} Add teacher</button></div><button class="btn" type="submit">Save</button></form>
       <form class="card card-body" data-form="set-social"><h3>${icon('share-nodes')} Social links</h3><div class="fgrid">${fld('Facebook page', 'facebook', s.social.facebook, 'type=url')}${fld('YouTube channel', 'youtube', s.social.youtube, 'type=url')}${fld('Telegram', 'telegram', s.social.telegram, 'type=url')}${fld('TikTok', 'tiktok', s.social.tiktok, 'type=url')}</div><button class="btn" type="submit">Save</button></form>
       <form class="card card-body" data-form="set-pay"><h3>${icon('wallet')} Payment &amp; donation</h3>${paystack ? html`<div class="alert ok">${icon('circle-check')} Paystack online payments are <b>enabled</b>.</div>` : html`<div class="alert">${icon('circle-info')} Online card payments (Paystack) are off. To enable, add <code>PAYSTACK_SECRET_KEY</code> to the server's .env file. Bank-transfer receipts work without it.</div>`}
         <div class="fgrid">${sel('Default currency', 'defaultCurrency', ['NGN', 'USD', 'GHS', 'GBP', 'EUR', 'SAR', 'AED'], s.defaultCurrency)}${fld('Bank / wallet provider', 'provider', s.bank.provider)}${fld('Account number', 'accountNumber', s.bank.accountNumber)}${fld('Account name', 'accountName', s.bank.accountName)}</div>${area('Instructions for international students', 'international', s.bank.international, 2)}
@@ -1705,7 +1795,7 @@ window.ICONS={"house":["0 0 512 512","M277.8 8.6c-12.3-11.4-31.3-11.4-43.5 0l-22
         <div class="foot-grid">
           <div><div class="brand" style="margin-bottom:12px"><img src="${s.logo}" alt=""><span><b>${s.siteName}</b></span></div><p>${t('footer.about')}</p><div class="socials">${socialIcons().map(([n, u, l]) => html`<a href="${u}" target="_blank" rel="noopener" aria-label="${l}">${icon(n)}</a>`)}</div></div>
           <div><h4>${t('footer.quick')}</h4><ul>${navItems().map(([p, k]) => html`<li><a href="${p}">${t(k)}</a></li>`)}<li><a href="/login">${t('auth.login')}</a></li></ul></div>
-          <div><h4>${t('footer.policies')}</h4><ul><li><a href="/terms">${t('footer.terms')}</a></li><li><a href="/privacy">${t('footer.privacy')}</a></li><li><a href="/refund">${t('footer.refund')}</a></li><li><a href="/donate">${t('nav.donate')}</a></li></ul></div>
+          <div><h4>${t('footer.policies')}</h4><ul><li><a href="/how-to-study">${t('foot.how')}</a></li><li><a href="/certificate-sample">${t('foot.sample')}</a></li><li><a href="/terms">${t('footer.terms')}</a></li><li><a href="/privacy">${t('footer.privacy')}</a></li><li><a href="/refund">${t('footer.refund')}</a></li><li><a href="/donate">${t('nav.donate')}</a></li></ul></div>
           <div><h4>${t('footer.contact')}</h4><ul><li>${icon('envelope')} <a href="mailto:${s.email}">${s.email}</a></li><li>${icon('whatsapp')} <a href="https://wa.me/${s.whatsapp}" target="_blank" rel="noopener">${s.phone}</a></li>${s.social.facebook ? html`<li>${icon('facebook')} <a href="${s.social.facebook}" target="_blank" rel="noopener">Facebook</a></li>` : ''}</ul></div>
         </div>
         <div class="copyright">&copy; ${new Date().getFullYear()} ${s.siteName}. ${t('footer.rights')}</div>
